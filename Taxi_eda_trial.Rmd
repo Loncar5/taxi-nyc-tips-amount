@@ -1,0 +1,623 @@
+---
+title: "Taxi - Tip Prediction Project"
+output:
+  html_document:
+    code_folding: hide
+    fig_height: 4.5
+    fig_width: 7
+    highlight: tango
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE, error=FALSE)
+```
+
+ ![New York - (https://pixabay.com/)](https://cdn.pixabay.com/photo/2015/03/11/12/31/new-york-668616_960_720.jpg) 
+
+# Prerequisites - PM Organization
+In case you wish to replicate this rmarkdown and understand the team organization, proceed with the steps below.
+
+## How to create R Studio projects?
+
+To create a new project follow this proceedure: File -- New Project -- Save it somewhere where you can find it later -- load the code file inside of that new project. Save all the data sets and rmarkdown version inside of the project file, because it is very convinient to have it all at one place. You can always use *File* pane, located on the right side of the Rstudio screen to manipulate, change or add files/folders/documents at any given time. 
+ 
+## How to "knit" HTML/PDF/WORD formats? 
+
+a) Make sure that you have installed all the necessary libraries. To install a library run this code in the console: install.packages("name of the package") If there are multiple packages that are missing in your enviroment, then put between each library name a comma sign. 
+
+b) Once you have installed all the libraries, proceed by clicking a small green **play** icon to the right of the code block area. That activates the code that is stored between ``` and {r}. After clicking the green play button, R stores objects/functions into the R Studio environment for later usage. 
+
+c) If you don't want to go through the code line by line and want to look the whole file in HTML/PDF/WORD format, then press **knit**. Knit is located in uper-left corner, it looks like blue knitting ball. Select HTML/WORD and it will knit, beware that PDF could not work. If you receive some error, then that means that you haven't installed certain package. Read through the error code and install the necessary library to resolve the issue. 
+
+## Rpubs
+
+If you ever want to see the progress on the project, you can visit my Rpubs site, where I will post every few days a new update on the project. [Loncar Rpubs Link](http://rpubs.com/Loncar5/)
+
+#  Business Understanding
+
+## The Requirement
+
+We very well understand the specific business requirement of The New York City Taxi and **Limousine Commission** (TLC) that is to predict the probable amount that the passengers would tip to the taxi drivers after trips and to propose this amount as a suggestion to the passengers in the future. Taking the initiative to ensure that the taxi drivers get their fair token of appreciation from the passengers in the form of a tip amount for the good service they provide is highly commendable.
+
+## The Service Location
+
+New York City is divided into 5 boroughs (Manhattan, Brooklyn, Queens, The Bronx, and Staten Island) and each borough is divided into community boards. 
+
+| Neighborhood  | Community Boards |
+|---------------|:-----------------|
+| Manhattan     |       12         |
+| Brooklyn      |       18         |
+| Queens        |       14         |
+| Bronx         |       12         |
+| Staten Island |        3         |
+
+## The Problem Area
+
+The trip fares and the amount that a taxi company (who owns a Medallion) can lease the vehicle to the driver is set by TLC which is the regulatory authority in this regard. The lease amount varies depending on the day of the week and if it is a daytime or an overnight shift. The drivers get to keep 100% of the fare and the tips. TLC also monitors routes taken by the drivers to ensure they are not artificially inflating the price. So, how much money a taxi driver makes is set by TLC and it is often difficult for taxi drivers to demand fare hikes because of the involvement of the government, political parties, trade unions and other business stakeholders.
+
+New York City being the business and cultural hub it is, sees over 50 million visitors a year. It is quite natural that most of the visitors who are new to the city has no idea on the prevalent taxi tip rates in the area. A tip recommendation service would be helpful in this aspect. It would also boost the morale of the taxi drivers and motivate them to provide a better service to the passenger which in turn would mean a happy customer. It is hence in our best interests to provide TLC with the best support, service and solution to achieve its specific business requirement not only for the benefit of New York City’s over 50,000 taxi drivers but also the greater social good.
+
+#  Data Understanding {.tabset .tabset-fade .tabset-pills}
+
+## Load Libraries and Helper Functions
+
+```{r, message = FALSE, warning=FALSE, cached = TRUE}
+library("Hmisc") # Descriptive Statistics
+library("psych") # Descriptive Statistics
+library('tidyverse') # ggplot2, dplyr, tidyr, readr, purrr, tibble
+library('scales') # visualisation
+library('grid') # visualisation
+library('RColorBrewer') # visualisation
+library('corrplot') # visualisation
+library('alluvial') # visualisation
+library('readr') # input/output
+library('data.table') # data manipulation
+library('tidyr') # data wrangling
+library('stringr') # string manipulation
+library('forcats') # factor manipulation
+library('lubridate') # date and time
+library('xgboost') # modelling
+library('caret') # modelling
+# library('caTools')
+# library('httpuv')
+library("DT")
+```
+
+Notice for future usage of libraries. When loading libraries a user might get an error such as: *Error in names(frame) <- `*vtmp*` : names() applied to a non-vector*. To prevent this error remove all the tabs between libraries and then load the libraries. In this case, I have already done it. 
+
+We use the *multiplot* function, courtesy of [R Cookbooks](http://www.cookbook-r.com/Graphs/Multiple_graphs_on_one_page_(ggplot2)/) to create multi-panel plots. It will come as a very handy visualization tool later on in Exploratory Data Analysis. To use the Multiplot function you first have to load it into your environment.
+
+```{r}
+# Define multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+
+# Normalize Function
+normalize <- function(x) {
+    return ((x - min(x)) / (max(x) - min(x)))
+}
+
+```
+## Load The Data 
+
+```{r loading, cache=FALSE, warning = FALSE, message = FALSE, echo=TRUE, cached = TRUE}
+getwd() #make sure that your working directory is located on the same location as all the project files. With getwd function you get the location of your current working direcotry.
+# to change the location of your working direcotry you can either use setwd() or go to the toolbar -> Tools/Global Options/set wd. For more information on setwd function, use help() or ?setwd. 
+data_dir <- "C:/Users/Luka Loncar/Desktop/Statistics for Data Science/Projects/UNI/Taxis/Taxis_Uni"
+complete_dataset <- "sample100000.csv"
+
+complete_dataset <- as.tibble(fread(complete_dataset))
+```
+
+## Data Set
+```{r, cached = TRUE} 
+complete_dataset %>%
+  head(50) %>%
+  DT::datatable(options = list(pageLength=10, scrollX='400px'), filter = 'top')
+```
+
+## Dimension of the Data Set
+```{r, cached = TRUE} 
+dim(complete_dataset)
+```
+
+There are 13 features and 100,000 observations stored within this data frame. The data frame is not "wide", instead it could be considered "long". 
+
+## Data Types
+```{r, cached = TRUE} 
+# Overview of the data types
+glimpse(complete_dataset)
+```
+
+We find that: 
+* pickup_datetime is a character , while instead it should be **ymd_hms** class. 
+
+* pickup_borough is as well a character , instead it should be **factor** class. 
+
+* pickup_neighborhood should be converted to **factor** class.
+
+* dropoff_datetimeshould be converted to **ymd_hms** class.
+
+* dropoff_borough should be converted to **factor** class.
+
+* dropoff_neighborhood  should be converted to **factor** class.
+
+* passenger_count should be converted to **factor** class.
+
+* trip_distance class is correctly assigned. 
+
+* payment_type should be converted to **factor** class.
+
+* fare_amount class is correctly assigned. 
+
+* extra should be converted to **factor** class.
+
+* tip_amount class is correctly assigned. 
+
+* tolls_amount class is correctly assigned. 
+
+## Categorical Data Types Distribution
+```{r, cached = TRUE} 
+# Categorical Data Types Distribution
+table(select(complete_dataset, pickup_borough))
+table(select(complete_dataset, pickup_neighborhood))
+table(select(complete_dataset, dropoff_borough))
+table(select(complete_dataset, dropoff_neighborhood))
+```
+
+## Distinct neighborhoods
+```{r, cached = TRUE} 
+# Distinct neighborhoods
+n_distinct(complete_dataset$pickup_neighborhood)
+n_distinct(complete_dataset$dropoff_neighborhood)
+```
+
+## Distribution of passangers 
+```{r, cached = TRUE} 
+# Distribution of passaners  
+complete_dataset %>%
+  group_by(passenger_count) %>%
+  count()
+```
+
+## Are there any NA's?
+```{r, cached = TRUE} 
+any(is.na(complete_dataset)) #or
+sum(is.na(complete_dataset))
+```
+
+## Reformating Features Data Types
+
+```{r, cached = TRUE}
+# Convert data time in appropriate file type
+complete_dataset <- complete_dataset %>%
+  mutate(pickup_datetime = ymd_hms(pickup_datetime),
+         dropoff_datetime = ymd_hms(dropoff_datetime),
+         passenger_count = factor(passenger_count),
+         pickup_borough = factor(pickup_borough),
+         dropoff_borough = factor(dropoff_borough),
+         pickup_neighborhood = factor(pickup_neighborhood), # Note that both pickup_neighborhood and dropoff_neighborhood are nominal data types. 
+         dropoff_neighborhood = factor(dropoff_neighborhood),
+         payment_type = factor(payment_type),
+         extra = factor(extra)) 
+```
+
+While converting variables to dates and factors, one problem later on could arrise. Our features pickup_neighborhood and dropoff_neighborhood have more than 32 categories and factors can hold up to 32 categories, thereby there is a chance that models could missbehave due to the number of factors. Also, have in mind when creating dummy variables out of those two features might not be a good idea since there are some categories that occure only few times. Thereby, those features could be static without any variance inside of them and prove to be useless in model building. To go around it, we can build a new feature that accounts for all the events that occure only few times.
+[https://stackoverflow.com/questions/8596109/r-machine-learning-packages-to-deal-with-factors-with-a-large-number-of-levels](Solution to the problem)
+
+## Spliting the Complete Data Frame
+
+```{r, cached = TRUE} 
+set.seed(4567)
+indexes <- sample(1:nrow(complete_dataset), size=0.25*nrow(complete_dataset)) #Sample Indexes
+# Split data
+test <- complete_dataset[indexes,]
+dim(test)  #  25000    13
+train <- complete_dataset[-indexes,]
+dim(train) # 75000    13
+
+# Remove Target feature from the test set
+test$tip_amount <- NULL
+dim(test) # 25000    12
+```
+
+## Splitting the train df by data type
+
+```{r, cached = TRUE} 
+# Select those features that have double data type
+dobule_train <- train %>%
+  select(trip_distance, fare_amount, extra, tip_amount, tolls_amount)
+
+glimpse(dobule_train)
+
+# Select those features that have character data type
+factor_train <- train %>%
+  select(pickup_borough, pickup_neighborhood, dropoff_borough, dropoff_neighborhood, payment_type, passenger_count)
+
+glimpse(factor_train)
+
+class(train$pickup_datetime)
+date_train <- select_if(complete_dataset, is.POSIXct)
+
+glimpse(date_train)
+
+#Target Variable that we want to predict
+y <- train$tip_amount
+
+# Spliting a target feature on 10  Parts for EDA
+train$tip_amount_freq <- as.factor(cut2(train$tip_amount, g = 7))
+
+# https://stackoverflow.com/questions/6104836/splitting-a-continuous-variable-into-equal-sized-groups?noredirect=1&lq=1
+```
+
+Objects that are created above will be used when specific data type is needed for EDA analysis. 
+
+
+#  Data Preparation
+
+## Descriptive Statistics {.tabset .tabset-fade .tabset-pills}
+
+
+### Descriptive Statistics- Proportions
+```{r, cached = TRUE} 
+# the package won't work with certain time data types, that's why we have to remove them, but not permanmently. It is just for the sake of descriptive statistics
+
+descriptive_stat <- train %>%
+  select(-c(pickup_datetime, dropoff_datetime))
+
+
+Hmisc::describe(descriptive_stat) # :: selects particualr function from a library
+```
+
+### Descriptive Statistics - Detailed DS
+
+```{r, cached = TRUE} 
+psych::describe(descriptive_stat) 
+```
+
+## Exploratory Data Analysis - Categorical features {.tabset .tabset-fade .tabset-pills}
+
+### Pickup_borough
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  ggplot(aes(x = pickup_borough, fill = tip_amount_freq)) +
+  geom_bar() +
+  labs(x = "pickup_borough") +
+  ggtitle("Tip Amount based on Pickup location as per Region")
+
+p2 <- train %>%
+  ggplot(aes(x = pickup_borough, fill = tip_amount_freq)) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(x = "pickup_borough") +
+  ggtitle("Freqeuncy of Tip Amount as per Region")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+```
+
+### Tip Amount based on Pickup location as per Neighborhood
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+ train %>%
+  ggplot(aes(x = pickup_neighborhood, fill = tip_amount_freq)) +
+  geom_bar() +
+  coord_flip() +
+  labs(x = "pickup_borough") +
+  ggtitle("Tip Amount based on Pickup location as per Neighborhood")
+
+```
+
+### Freqeuncy of Tip Amount as per Neighborhood
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%"}
+ train %>%
+  ggplot(aes(x = pickup_neighborhood, fill = tip_amount_freq)) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  labs(x = "pickup_borough") +
+  ggtitle("Freqeuncy of Tip Amount as per Neighborhood")
+```
+
+### dropoff location
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  ggplot(aes(x = dropoff_borough, fill = tip_amount_freq)) +
+  geom_bar() +
+  labs(x = "pickup_borough") +
+  ggtitle("Tip Amount based on dropoff location as per Region")
+
+p2 <- train %>%
+  ggplot(aes(x = dropoff_borough, fill = tip_amount_freq)) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  labs(x = "pickup_borough") +
+  ggtitle("Freqeuncy of Tip Amount as per Region")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+
+```
+
+### Tip Amount based on dropoff location as per Neighborhood
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+ train %>%
+  ggplot(aes(x = dropoff_neighborhood, fill = tip_amount_freq)) +
+  geom_bar() +
+  coord_flip() +
+  labs(x = "dropoff_neighborhood") +
+  ggtitle("Tip Amount based on dropoff location as per Neighborhood")
+
+
+```
+
+### Freqeuncy of Tip Amount as per Neighborhood
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  ggplot(aes(x = dropoff_neighborhood, fill = tip_amount_freq)) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  labs(x = "dropoff_neighborhood") +
+  ggtitle("Freqeuncy of Tip Amount as per Neighborhood")
+```
+
+### Payment Type and Passanger Count
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  ggplot(aes(x = payment_type, fill = tip_amount_freq)) +
+  geom_bar() +
+  labs(x = "payment_type") +
+  ggtitle("Tip Amount based on dropoff location as per payment type")
+
+p2 <- train %>%
+  ggplot(aes(x = passenger_count, fill = tip_amount_freq)) +
+  geom_bar() +
+  labs(x = "passenger_count") +
+  ggtitle("Tip Amount based on dropoff location as per passenger count ")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+```
+
+## Exploratory Data Analysis - Time features {.tabset .tabset-fade .tabset-pills}
+
+### pickup_datetime per Month and Day
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  mutate(hpick = hour(pickup_datetime),
+         Month = factor(month(pickup_datetime, label = TRUE))) %>%
+  group_by(hpick, Month) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = Month)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+p2 <- train %>%
+  mutate(hpick = hour(pickup_datetime),
+         wday = factor(wday(pickup_datetime, label = TRUE))) %>%
+  group_by(hpick, wday) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = wday)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+```
+
+### Drop Off per Month and Day
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  mutate(hpick = hour(dropoff_datetime),
+         Month = factor(month(dropoff_datetime, label = TRUE))) %>%
+  group_by(hpick, Month) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = Month)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+p2 <- train %>%
+  mutate(hpick = hour(dropoff_datetime),
+         wday = factor(wday(dropoff_datetime, label = TRUE))) %>%
+  group_by(hpick, wday) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = wday)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+```
+
+### Drop Off per Month and Day
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  mutate(hpick = hour(pickup_datetime)) %>%
+  group_by(hpick, tip_amount_freq) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = tip_amount_freq)) +
+  geom_point(size = 4) +
+  labs(x = "Hour of the day", y = "Total number of pickups") +
+  theme(legend.position = "none")
+```
+
+### Tip Ammount per hour of Day
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  mutate(hpick = hour(dropoff_datetime),
+         Month = factor(month(dropoff_datetime, label = TRUE))) %>%
+  group_by(hpick, Month) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = Month)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+p2 <- train %>%
+  mutate(hpick = hour(dropoff_datetime),
+         wday = factor(wday(dropoff_datetime, label = TRUE))) %>%
+  group_by(hpick, wday) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = wday)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+```
+
+## Exploratory Data Analysis - Target Feature {.tabset .tabset-fade .tabset-pills}
+
+### Target Feature
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  ggplot(aes(x = tip_amount)) +
+  geom_histogram(fill = "red", bins = 200) +
+  labs(x = "Average tip amount")
+```
+
+### Target Feature with scale_y_log10
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  ggplot(aes(x = tip_amount)) +
+  geom_histogram(fill = "red", bins = 200) +
+  scale_y_log10() +
+  labs(x = "Average tip amount")
+```
+
+### Target Feature with scale_y_log10 and filter tip_amount > 0.1
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  filter(tip_amount > 0.1) %>%
+  ggplot(aes(x = tip_amount)) +
+  geom_histogram(fill = "red", bins = 200) +
+  scale_y_log10() +
+  labs(x = "Average tip amount")
+```
+
+## Exploratory Data Analysis - Continuous Features {.tabset .tabset-fade .tabset-pills}
+
+### Correlation
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+correlation <- train %>%
+  select(passenger_count, trip_distance, payment_type, fare_amount,
+         extra, tolls_amount, tip_amount) %>%
+  mutate(passenger_count = as.integer(passenger_count),
+         trip_distance = as.integer(trip_distance),
+         payment_type = as.integer(payment_type),
+         fare_amount = as.integer(fare_amount),
+         extra = as.integer(extra),
+         tolls_amount = as.integer(tolls_amount),
+         tip_amount = as.integer(tip_amount))
+
+correlation %>%
+  cor(use="complete.obs", method = "spearman") %>%
+  corrplot(type="lower", method="circle", diag=FALSE)
+```
+
+### Target Feature with scale_y_log10 and filter tip_amount less than 0.1
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  ggplot(aes(x = trip_distance, fill = tip_amount_freq)) +
+  geom_histogram(bins = 300) +
+  scale_x_log10() +
+  scale_y_sqrt()
+
+p2 <- train %>%
+  ggplot(aes(x = fare_amount, fill = tip_amount_freq)) +
+  geom_histogram(bins = 300) +
+  scale_x_log10() +
+  scale_y_sqrt()
+```
+
+
+#  Modeling
+
+#  Evaluation
+
+# Task/Problems
+
+## Knit to PDF
+For now it is quite complicated to reproduce the result in PDF, since errors *43 and 41*. Figure out how to go around this problem. For now it works well when you knit in HTML or Word file, but PDF gives error. Contact me if you resolved the issue. (**Responsibility of: ________**)
+
+Here is what I did and it worked for a while, soon after few knittings it started giving me errors. 
+If you want to  "knit" your rmarkdown in to PDF format, I suggest to install first MiKTex. Follow the proceedure from here: https://github.com/rstudio/shiny-examples/issues/34 Otherwise it won't work, eventhough you could run it through html format with out any problem. 
+
+*tex\latex\upquote\upquote.sty* it will ask you to install 5-6 packages, depending on how many of those packages you don't have in your R environment. 
+
+https://stackoverflow.com/questions/25856362/pandoc-document-conversion-failed-with-error-43-pdflatex-the-memory-dump-file
+
+## How to change result code font?
+
+How to change the font within the function results? There is a font difference beween text in markdown and output code.
+
+## R Studio Connect
+
+I am also experimenting with https://beta.rstudioconnect.com, because later on we could make Shiny interactive applications. We can discuss further when we meet. As soon as we all agree that we will use it, I'll write notes on how to use it. 
+
+## Gitbhub
+
+We could use Github as a version control. Github goes hand in hand with projects ability that is within Rstudio. One of our team members could be "controlling officer" and teach all the team members how to use it and what is the general idea behind using version control in ML. (**Responsibility of: ________**)
+
+
+Dear team members if you have any problems, please do contact our customer support unit: *luka.loncar5@gmail.com*
+
+```{r}
+train$tip_amount_freq <- NULL
+model <- lm(tip_amount ~., train)
+p <- predict(model, test)
+
+error <- p - train$tip_amount
+
+sqrt(mean(error^2))
+predict(model, test)
+```
+
