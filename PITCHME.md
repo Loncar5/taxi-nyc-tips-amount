@@ -1,4 +1,4 @@
-# Understanding the data
+### Understanding the data
 
 * New York City Taxi and Limousine Commission has been recording data of taxi trips in NYC since 2009.  
 * Data is available for Yellow Medallion Taxicabs, For Hire Vehicles (FHVs) and Street Hail Livery (SHL).
