@@ -5,9 +5,7 @@
 * We will be using data of 100.000 trips in NYC with Yellow cabs.
 * A random sample of 10.000 trips have been used to understand & explore the data.
 
-<p align="center">
-  <img width="460" height="300" src="http://www.nyc.gov/html/tlc/images/photos/full_crown_victoria.jpg">
-</p>
+ <img width="350" height="200" src="http://www.nyc.gov/html/tlc/images/photos/full_crown_victoria.jpg">
 
 +++
 
