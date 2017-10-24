@@ -12,3 +12,7 @@
 #### Predicting Taxi Tip-Rates in NYC (2016)
 
 - [A predictive model](https://cseweb.ucsd.edu/~jmcauley/cse190/reports/sp15/050.pdf) with 2013 trip record data by *S. Jain, A. See & A. Shandilya*
+
+#### NYC Taxi Riders' Tipping Behavior Analysis (2016)
+
+- [Here](https://blog.nycdatascience.com/r/nyc-taxi-riders-tipping-behavior-analysis/) is an analysis from a different perspective published by *A. Liu* in NYC data science blog. Analysis has been done with R using both green & yellow caps data.
