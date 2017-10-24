@@ -8,11 +8,13 @@
  <img width="350" height="200" src="http://www.nyc.gov/html/tlc/images/photos/full_crown_victoria.jpg">
 
 +++
-
-New slide
-
+### Gathering Data
 +++
-
-New slide
-
+### Describing Data
++++
+### Exploring Data
++++ 
+### Veryfying Data
++++
+### What else can we do?
 +++
