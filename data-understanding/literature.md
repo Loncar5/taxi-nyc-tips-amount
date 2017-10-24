@@ -1,6 +1,6 @@
 ## Previous studies on NYC Taxi & Limousine Commission - Trip Record Data
 
-#### NYC Taxis: A Day in the Life(2017)            
+#### NYC Taxis: A Day in the Life (2017)            
   
 - [This](http://chriswhong.github.io/nyctaxi/) visualization displays the data for one random NYC yellow taxi on a single day in 2013. See where it operated, how much money it made, and how busy it was over 24 hours.(Chris Whong,2017)
 
