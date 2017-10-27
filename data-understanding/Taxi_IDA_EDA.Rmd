@@ -1,18 +1,12 @@
 ---
 title: "Taxi - Tip Prediction Project"
 output:
-  html_document:
+ github_document:
+    number_sections: TRUE
+    toc: TRUE
+    fig_height: 6
+    fig_width: 9
     code_folding: hide
-    fig_height: 4.5
-    fig_width: 7
-    highlight: tango
-    number_sections: yes
-    theme: cosmo
-    toc: yes
-  word_document:
-    toc: yes
-  pdf_document:
-    toc: yes
 date: "`r Sys.Date()`"
 ---
 
@@ -20,9 +14,9 @@ date: "`r Sys.Date()`"
 knitr::opts_chunk$set(echo=TRUE, error=FALSE)
 ```
 
-#  Data Understanding :D
+#  Data Understanding and Data Preparation
 
-## Load Libraries and Helper Functions
+## Load Libraries and Helper Functions 
 
 ```{r, message = FALSE, warning=FALSE, cached = TRUE}
 library("Hmisc") # Descriptive Statistics
@@ -41,11 +35,11 @@ library('forcats') # factor manipulation
 library('lubridate') # date and time
 library('xgboost') # modelling
 library('caret') # modelling
-library("DT") # Interactive View of the Data
+# library('caTools')
+# library('httpuv')
+library("DT")
+library("knitr")
 ```
-
-
-We use the *multiplot* function, courtesy of [R Cookbooks](http://www.cookbook-r.com/Graphs/Multiple_graphs_on_one_page_(ggplot2)/) to create multi-panel plots. It will come as a very handy visualization tool later on in Exploratory Data Analysis. To use the Multiplot function you first have to load it into your environment.
 
 ```{r}
 # Define multiple plot function
@@ -101,17 +95,15 @@ normalize <- function(x) {
 
 ```
 
-## Loading Taxi Main Data Set
+## Load The Data Sets {.tabset}
+
+### Loading Taxi Main Data Set
 ```{r}
 taxi_data <- "sample100000.csv"
 taxi_data <- as.tibble(fread(taxi_data))
-```
 
-
-```{r}
 taxi_data <- taxi_data %>%
   mutate(date = date(pickup_datetime),
-         month = month(pickup_datetime, label = TRUE),
          wday = wday(pickup_datetime, label = TRUE),
          wday = fct_relevel(wday, c("Mon", "Tues", "Wed", "Thurs", "Fri", "Sat", "Sun")),
          hour = hour(pickup_datetime),
@@ -120,15 +112,14 @@ taxi_data <- taxi_data %>%
   arrange(pickup_datetime)
 ```
 
-```{r}
+### Loading The Weather Data Set
+```{r, warning = FALSE, message = FALSE, echo=TRUE, cached = TRUE}
 weather <- "weather.csv"
 weather <- as.tibble(fread(weather))
 
 weather <- weather %>%
   select(DATE, TMAX,TMIN)
-```
 
-```{r}
 weather <- weather %>%
   mutate(date = date(DATE))
 
@@ -144,7 +135,7 @@ foo <- foo %>%
   head(30)
 ```
 
-
+### Combining The Two Data Sets
 ```{r}
 complete_dataset <- taxi_data %>%
   inner_join(foo, by = "date")
@@ -152,26 +143,78 @@ complete_dataset <- taxi_data %>%
 # rm(taxi_data)
 ```
 
+## Data Set
 ```{r}
-census_block_loc <- "census_block_loc.csv"
-census_block_loc <- as.tibble(fread(census_block_loc))
-
-n_distinct(census_block_loc$County)
-
-n_distinct(complete_dataset$pickup_borough)
-
-table_freq(complete_dataset$pickup_borough)
-table_freq(complete_dataset)
+complete_dataset %>%
+  head(25) %>%
+  DT::datatable(options = list(pageLength=10, scrollX='400px'), filter = 'top')
 ```
 
-```{r}
-nyc_census_tracts <- "nyc_census_tracts.csv"
-nyc_census_tracts <- as.tibble(fread(nyc_census_tracts))
-
-n_distinct(nyc_census_tracts)
-
-summary(nyc_census_tracts)
-
-#https://www.kaggle.com/muonneutrino/new-york-city-census-data
+## NA check?
+```{r, cached = TRUE} 
+any(is.na(complete_dataset)) #or
+sum(is.na(complete_dataset))
 ```
 
+## Data Types Check
+```{r}
+glimpse(complete_dataset)
+```
+
+## Changing Data Types Accordingly 
+```{r}
+complete_dataset <- complete_dataset %>%
+  mutate(pickup_datetime = ymd_hms(pickup_datetime),
+         dropoff_datetime = ymd_hms(dropoff_datetime),
+         passenger_count = factor(passenger_count),
+         pickup_borough = factor(pickup_borough),
+         dropoff_borough = factor(dropoff_borough),
+         pickup_neighborhood = factor(pickup_neighborhood),  
+         dropoff_neighborhood = factor(dropoff_neighborhood),
+         payment_type = factor(payment_type),
+         extra = factor(extra),
+         wday = factor(wday),
+         work = factor(work),
+         trip_duration = as.integer(trip_duration),
+         TMAX = as.integer(TMAX),
+         TMIN = as.integer(TMIN)) %>%
+  select(-date)
+```
+
+## Error Identification Hunt 
+
+## Data Split
+```{r}
+set.seed(4567)
+indexes <- sample(1:nrow(complete_dataset), size=0.20*nrow(complete_dataset)) #Sample Indexes
+# Split data
+test <- complete_dataset[indexes,]
+dim(test)  #  20000    19
+train <- complete_dataset[-indexes,]
+dim(train) # 80000    19
+
+# Remove Target feature from the test set
+# test$tip_amount <- NULL
+# dim(test) # 25000    12
+```
+
+
+# Descriptive Statistics {.tabset}
+Outliner Identification Hunt 
+
+## By Proportions
+```{r, cached = TRUE} 
+# the package won't work with certain time data types, that's why we have to remove them, but not permanmently. It is just for the sake of descriptive statistics
+
+descriptive_stat <- train %>%
+  select(-c(pickup_datetime, dropoff_datetime))
+
+
+Hmisc::describe(descriptive_stat) # :: selects particualr function from a library
+```
+
+## Granular look into the data
+
+```{r, cached = TRUE} 
+psych::describe(descriptive_stat) 
+```
