@@ -11,12 +11,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Feature engineering:
 
-- date to date part
-- duration
-- calculate KPIs: tip/distance etc
-- categorical -> dummy
-- grouping where necessary
-- prep weather data and merge into dataset
+- partition the date features into more date features by: hour, day and any other options if applicable. (+)
+- duration (+)
+- calculate KPIs: tip/distance etc (EDA)
+- categorical -> dummy (-)
+- grouping where necessary, which means to group those rare categories into one category instead of having them many. 
+- prep weather data and merge into dataset (+)
+
 - merge population/crime data in (optional)
 
 Start thinking about:
