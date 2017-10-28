@@ -15,17 +15,28 @@ str(sample) ## class is factor for each datetime data column.
 ## - Create new variable: Daypart (factor)
 ## - Create new variable: Date
 
-## Start with changing their class to character.
+## Start with changing datetime columns' classes to time
 
-sample$pickup_datetime <- as.character(sample$pickup_datetime)
-sample$dropoff_datetime <- as.character(sample$dropoff_datetime)
+sample$pickup_datetime <- strptime(sample$pickup_datetime,"%Y-%m-%d %H:%M:%S")
+sample$dropoff_datetime <- strptime(sample$dropoff_datetime,"%Y-%m-%d %H:%M:%S")
 
-class(sample$pickup_datetime) 
-class(sample$dropoff_datetime)
+## Add the trip duration as a new variable
 
-## Split date & time data
+sample$duration <- as.numeric(difftime(sample$dropoff_datetime,sample$pickup_datetime, units = "mins"))
+sample$duration <- round(sample$duration, digits = 2)
 
-str_split(sample$pickup_datetime, " ")
+## I will use the pickup hour for dayparting based on tv & radio broadcast dayparts.
 
-pickup_time <- matrix(unlist(pickup_time), ncol=2, byrow=TRUE)
+sample$pickup_hours = as.numeric(format(sample$pickup_datetime, "%H"))
+
+sample$pickup_daypart[sample$pickup_hours >= 6 & sample$pickup_hours < 10 ] <- "morning drive time"
+sample$pickup_daypart[sample$pickup_hours >= 10 & sample$pickup_hours < 15 ] <- "midday"
+sample$pickup_daypart[sample$pickup_hours >= 15 & sample$pickup_hours < 19 ] <- "afternoon drive time"
+sample$pickup_daypart[sample$pickup_hours >= 19 ] <- "evening"
+sample$pickup_daypart[sample$pickup_hours >= 0 & sample$pickup_hours < 6 ] <- "overnight"
+
+sample$pickup_hours <- NULL
+
+
+
 
