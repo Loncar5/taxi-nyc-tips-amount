@@ -1,0 +1,50 @@
+---
+title: "notes"
+author: "Luka Loncar"
+date: '27 listopada 2017 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data Import 
+
+Making a single data frame out of many data frames
+Creating features that make sense
+
+# Data Understanding and Preparation
+
+Are there any NA's (+), missclasified data types(+), errors and outliners?
+We achieve that through descriptive and exploratory statistics. Each is complement to one another. 
+
+- DS
+
+- EDA by data type
+
+```{r}
+glimpse(train)
+
+table(train$pickup_neighborhood)
+```
+TO DO: trip_duration, trip_distance,fare_amount, tolls_amount TMIN TMAX
+
+
+passenger_count - what is when a passanger is 0? haha 
+trip_distance - 7 outliners
+extra - one outliner
+pickup_neighborhood - make classes with less than 1000 observations into one class. 
+dropoff_borough - Staten Island have only 6 observations
+dropoff_neighborhood - same as pickup_neighborhood
+
+
+
+
+
+
+
+
+
+
+
