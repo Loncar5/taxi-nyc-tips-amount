@@ -1,0 +1,46 @@
+---
+title: "Data Understandind & Preparation"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Reading the data
+
+* Import the data
+
+```{r}
+
+sample <- read.csv("sample100000.csv")
+
+```
+
+### What does each column mean?
+
+```{r echo=FALSE}
+
+str(sample)
+
+```
+
+* **Sample** has 100.000 observations and 13 variables
+* **pickup_datetime** and **dropoff_datetime** are date & time information for each trip. The variable type is *factor* for both variables.
+* **borough** and **neihgborhood** level pick up and dropoff locations. Both variables are factor type.
+* **passenger_count** is the number of passengers for each trip.integer type.
+* **payment_type** A numeric code signifying how the passenger paid for the trip.variable type is integer.  
+1= Credit card  
+2= Cash  
+3= No charge  
+4= Dispute  
+* **trip_distance** in miles.
+* **fare_amount** The time-and-distance fare calculated.
+* **extra** Miscellaneous extras and surcharges.(Currently, this only includes
+the $0.50 and $1 rush hour and overnight charges.)
+* **tip_amount** This field is automatically populated for credit card
+tips. (Cash tips are not included.)
+* **tolls_amount** Total amount of all tolls paid in trip.  
+  
+### How can we make our dataset more "clean"?
