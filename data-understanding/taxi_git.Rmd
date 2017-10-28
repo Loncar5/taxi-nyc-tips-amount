@@ -1,7 +1,6 @@
 ---
 title: "Taxi - Tip Prediction Project"
-output:
- github_document:
+ output: rmarkdown::github_document:
     number_sections: TRUE
     toc: TRUE
     fig_height: 6
