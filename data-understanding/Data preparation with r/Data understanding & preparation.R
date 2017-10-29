@@ -37,6 +37,24 @@ sample$pickup_daypart[sample$pickup_hours >= 0 & sample$pickup_hours < 6 ] <- "o
 
 sample$pickup_hours <- NULL
 
+## I want to keep date as a seperate column. This will be used to pull each date's climate info from climate data.
 
+sample$date = format(sample$pickup_datetime, "%Y-%m-%d")
+
+# Read the climate data. This data includes average temperature measured in Fahrenheit for each day in 2015. Also There are 7 dummies for categorical weather type variable.
+
+climate_data <- read.csv("ny-climate-data.csv")
+
+climate_data[is.na(climate_data)] <- 0  # Fix the NA's in climate data
+
+# Join the climate data
+
+colnames(climate_data)[1] <- "date" # Column names should match to use join function.
+
+sample_2 <- merge(x = sample, y = climate_data, by = "date", all.x = TRUE)
+
+colnames(sample_2)[17] <- "average_temperature"
+
+#ftp://ftp.ncdc.noaa.gov/pub/data/cdo/documentation/LCD_documentation.pdf for the definition of weather columns.
 
 
