@@ -39,8 +39,52 @@ dropoff_borough - Staten Island have only 6 observations
 dropoff_neighborhood - same as pickup_neighborhood
 
 
+```{r}
+glimpse(taxi_data)
+```
 
 
+```{r}
+library(dplyr)
+strigar <- data.frame(ifelse(taxi_data$passenger_count < 3, 1, taxi_data$passenger_count))
+View(strigar)
+strigar$column <- strigar$ifelse.taxi_data.passenger_count...3..1..taxi_data.passenger_count.
+
+strigar[,1] <- NULL 
+
+
+
+# %in% is a logical comparision
+
+
+?ifelse
+n_distinct(taxi_data$passenger_count)
+
+any(taxi_data$passenger_count == 0)
+
+taxi_dataa <- taxi_data
+
+taxi_dataa$passenger_count <- ifelse(taxi_dataa$passenger_count < 4, 1,taxi_dataa$passenger_count)
+
+any(taxi_dataa$passenger_count == 6)
+n_distinct(taxi_dataa$passenger_count)
+
+summarize(count = n(taxi_dataa$passenger_count))
+
+summarize(taxi_dataa, count = n())
+          
+          
+taxi_dataa %>%
+  group_by(passenger_count) %>%
+  summarize(n())
+          
+yes <- 1:3
+no <- pi^(0:3)
+
+typeof(ifelse(NA,    yes, no))
+typeof(ifelse(TRUE,  yes, no))
+typeof(ifelse(FALSE, yes, no))
+```
 
 
 
