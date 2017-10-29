@@ -16,6 +16,7 @@ knitr::opts_chunk$set(echo=TRUE, error=FALSE)
 
 
 # Data Understanding and Data Preparation
+
 The first part of the analysis is devided by IDA and EDA. Those are the preliminary steps before feature engineering, modeling and the final evaluation stage.
 
 # Initial Data Analysis
