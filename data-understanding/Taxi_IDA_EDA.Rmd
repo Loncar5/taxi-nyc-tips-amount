@@ -14,9 +14,34 @@ date: "`r Sys.Date()`"
 knitr::opts_chunk$set(echo=TRUE, error=FALSE)
 ```
 
-#  Data Understanding and Data Preparation
-page 59 use summrize and group by for descriptive statistics of date features
-use position dodge for a histogram page 29
+
+# Data Understanding and Data Preparation
+The first part of the analysis is devided by IDA and EDA. Those are the preliminary steps before feature engineering, modeling and the final evaluation stage.
+
+# Initial Data Analysis
+Here are some of the ideas and questions that are behind IDA and EDA for the Taxi data set:
+
+**IDA (Initial Data Analysis)**
+
+- are there any external data sets that we can use in combination with our main data set?
+
+- are there any *NA's* in the data set?
+
+- are the data tpyes correctly assigned?
+
+- are there any errors/anomalies within the data set?
+
+- create features that could be very informitative during EDA and predictiong modeling stage.
+
+**EDA (Exploratory Data Analysis)**
+
+- the find out the distribution of the data set
+
+- what are the relationships between the features and how does each feature relate with target feature?
+
+- are there any outliners and the explanation behind those outliners
+
+
 ## Load Libraries and Helper Functions 
 
 ```{r, message = FALSE, warning=FALSE, cached = TRUE}
@@ -37,12 +62,11 @@ library('forcats') # factor manipulation
 library('lubridate') # date and time
 library('xgboost') # modelling
 library('caret') # modelling
-# library('caTools')
-# library('httpuv')
-library("DT")
-library("knitr")
+library("DT") # creating tables
+library("knitr") # rmarkdown
 ```
 
+The multiplot function is used for gathering several graphs into more appealing format. Down below is the explanation how to use it. To learn more visit the [Cookbook for R](http://www.cookbook-r.com/Graphs/Multiple_graphs_on_one_page_(ggplot2)/).
 ```{r}
 # Define multiple plot function
 #
@@ -99,6 +123,8 @@ normalize <- function(x) {
 
 ## Load The Data Sets {.tabset}
 
+The first data set is the Taxi data set and is the basis upon which we will try to predict the tip amount, based on other features. 
+
 ### Loading Taxi Main Data Set
 ```{r}
 taxi_data <- "sample100000.csv"
@@ -114,7 +140,23 @@ taxi_data <- taxi_data %>%
   arrange(pickup_datetime)
 ```
 
+There are **100000** observations and **13** features. 
+
+Here are some of the features that we have created from pre-existing features in the taxi_data:
+
+- date: date was created because it will serve as a primary key between taxi_data and weather data set.
+
+- wday: is devided upon **7** days of the week.
+
+- hour: indicates a hour of a day for each observation
+
+- work: if TRUE then that means the observation was recorded during the work time, while FALSE records the observation after the working hours
+
+- trip_duration: represents the difference between dropoff and pickup time. 
+
 ### Loading The Weather Data Set
+
+The Weather data set was taken from the [NCDC](https://www.ncdc.noaa.gov/) 
 ```{r, warning = FALSE, message = FALSE, echo=TRUE, cached = TRUE}
 weather <- "weather.csv"
 weather <- as.tibble(fread(weather))
@@ -137,6 +179,8 @@ foo <- foo %>%
   head(30)
 ```
 
+Weather data set represents date, maximal and minimal temperature for each day of the month for June. Date feature is a key feature, with which we will connect the taxi_data and weather data sets. 
+
 ### Combining The Two Data Sets
 ```{r}
 complete_dataset <- taxi_data %>%
@@ -153,6 +197,8 @@ complete_dataset %>%
 ```
 
 ## NA check
+
+Great, there aren't any NA's in the data set. That most certainly makes the analysis easier, however we have to further investigate if NA's are registered under some other value. 
 ```{r, cached = TRUE} 
 any(is.na(complete_dataset)) #or
 sum(is.na(complete_dataset))
@@ -163,7 +209,11 @@ sum(is.na(complete_dataset))
 glimpse(complete_dataset)
 ```
 
+We see that certain features need to be adjusted into the right data type form. 
+
 ## Changing Data Types Accordingly 
+
+The data types are changed because when preforming EDA, ggplo2 and many other packages, it is recommended to have features in certain data type. For example when you want to represent a categorical variable, then it is advised to use factor data type, instead of character data type. Since that shall give an analyst an opportunity to preform greater variety of visualization abilities. 
 ```{r}
 complete_dataset <- complete_dataset %>%
   mutate(pickup_datetime = ymd_hms(pickup_datetime),
@@ -185,7 +235,7 @@ complete_dataset <- complete_dataset %>%
 
 ## Error Identification Hunt  {.tabset}
 
-Next step is to find out are there any errors within the data set. Those errors could be done by importing the data set, data enrty or any other way. It is wise to do this check up before doing the data split, because those errors might not occure due to natural occurance, but rather from human or machine mistake. 
+Next step is to find out are there any errors within the data set. Those errors could occure by importing the data set, data enrty or any other possibility. It is wise to do this check up before doing the data split, because those errors might not occure due to natural occurance, but rather from human or machine error.  
 
 ## View Data By Proportions
 ```{r, cached = TRUE} 
@@ -199,9 +249,10 @@ Hmisc::describe(descriptive_stat) # :: selects particualr function from a librar
 ```
 
 ## Data Cleaning 
-
+After going quickly going through the data proportions there are few potential errors and anomalies. The next step would be to further investigate to see if they are errors made during the data entry, importing or any other stage. This step is similar with the outliner analysis in many ways. The main difference is that in data cleaning stage you are remove anomalies, rather than outliners. Those anomalies do not represent the data set, nor the data set upon which the final model shall be build. Besides imputing or removing the errors, we will also group classes of some categorical features with one another. We do this so that we have less classes with only few observations and secondly when we wanto to create dummy variables out of our categorical features, we will have less features that don't have any variation in them self, due to the sheer small size of observations.
 
 - passenger_count: It appears that there are occasions where a taxi driver had 0 passengers, but still managed to bill the immaginative passanger. After looking deeper into the problem, we discover that both classes of 0 and 1 passanger are quite similar to one another, thereby we assigned them as class a "1". 
+
 ```{r}
 complete_dataset %>%
   filter(passenger_count == 0) %>%
@@ -209,38 +260,71 @@ complete_dataset %>%
 ```
 
 Procedure of putting observations with zero passangers into the class of "1". 
+
 ```{r}
 complete_dataset <- complete_dataset %>%
   mutate(passenger_count = fct_collapse(passenger_count, "1" = c("1", "0")))
 ```
 
 
-- trip_distance - It seems that there are three trip distances that fall into the category of potential errors. After a more detail data examination we find out that there is a trip that lasted only 23 minutes, but on the contrary more than 3000 kilometers was passed. 
+- trip_distance
+
+It seems that there are three trip distances that fall into the category of potential errors. After a more detail data examination we find out that there is a trip that lasted only 23 minutes, but on the contrary more than 3000 kilometers were passed in those 23 minutes. 
 
 To solve this particualr error we could either take an average of 23 minute trip and draw a parallel on how much a trip of such magnitude did in regards to the trip distance. Secondly, we could substitute it with the third quartile.  
+
 The second problematic observation has more trip distance of 58.84 kilometers and the trip duration was 91 minutes. That could actually be a possible scenario, however higly unlikely. Also the second observation has fare_amount of 263, which is twice as much as the second maximum value of the fare_amount feature. That finding gives us a hint that something is out proportion in here.  
 
 The third obeservation states that taxi passed 111 kilomenters in just 52 minutes, which as well highly unlikely since New York Manhattan is not a place where a car can go above 50 kilometers for a long period of time, due to the traffic. 
+
 ```{r}
+
 complete_dataset %>%
-  filter(trip_distance >= 45) %>%
+  filter(trip_distance > 43.625) 
+
+# 1 Taking the average of trip distance between 20 and 25, and replacing that average with 3008.3 km. 
+complete_dataset %>%
+  filter(trip_distance > 20 & trip_distance < 25) %>%
+  summarise(mean(trip_duration)) #49.44
+
+
+complete_dataset <- complete_dataset %>%
+  mutate(trip_distance = replace(trip_distance, trip_distance == 3008.3, 49.44)) %>%
+  as.data.frame()
+
+# 2 Replacing trip distance of 111.7 with 10.24, on the basis of average of trip duration between 55 and 60. 
+complete_dataset %>%
+  filter(trip_duration > 55 & trip_duration < 60) %>%
+  summarise(mean(trip_distance)) # 10.24
+
+complete_dataset <- complete_dataset %>%
+  mutate(trip_distance = replace(trip_distance, trip_distance == 111.700, 10.24)) %>%
+  as.data.frame()
+
+
+
+complete_dataset %>%
+  filter(trip_distance >= 25) %>%
   DT::datatable(options = list(pageLength=10, scrollX='400px'), filter = 'top')
 
-qn = quantile(complete_dataset$trip_distance, c(0.01, 0.99), na.rm = TRUE)
-  
-complete_dataset <- within(complete_dataset, { trip_distance = ifelse(trip_distance < qn[1], qn[1], trip_distance)
-                  trip_distance = ifelse(trip_distance > qn[2], qn[2], trip_distance)})
+# Second option:
+# qn = quantile(complete_dataset$trip_distance, c(0.01, 0.99), na.rm = TRUE)
+#   
+# complete_dataset <- within(complete_dataset, { trip_distance = ifelse(trip_distance < qn[1], qn[1], trip_distance)
+#                   trip_distance = ifelse(trip_distance > qn[2], qn[2], trip_distance)})
 
 ```
 
 - extra: We have one observation with 8.5 value. This value must be an error or an old policy that ended on the first day of June. Further investigation is needed to confirm this. First argument for a such big fare, could be found on the basis that trip was done in the evening at around 21:04. Second argument for a such outliner could be explained in sense that the value is part of a population that is not represented in June month, but rather in some other month. 
+
 ```{r}
 complete_dataset %>%
   filter(extra == 8.5) %>%
   DT::datatable(options = list(pageLength=10, scrollX='400px'), filter = 'top')
 ```
 
-We have concluted to add "8.5" extra class, into the class "1".
+We have concluted to add "8.5" extra class, into the class "1", because other features of the "8.5" observation are similary distributed as the features of class "1".
+
 ```{r}
 complete_dataset <- complete_dataset %>%
   mutate(extra = fct_collapse(extra, "1" = c("1", "8.5")))
@@ -252,13 +336,13 @@ complete_dataset %>%
 
 - pickup_neighborhood: There are 35 distinct classes of pickup_neighborhood factor variable. Many of the classes have one to twenty observations, thereby we have taken those classes and made a new class "Other", for the sole purpose of making a better predictive model.
 ```{r}
-complete_dataset %>%
-  group_by(pickup_neighborhood) %>%
-  summarise(n())
-
 complete_dataset <- complete_dataset %>%
   mutate(pickup_neighborhood = fct_collapse(pickup_neighborhood,
                                           Other = c("Borough Park", "Bronx Park and Fordham", "Canarsie and Flatlands", "Central Bronx", "Central Queens", "East New York and New Lots", "Flatbush", "High Bridge and Morrisania", "Hunts Point and Mott Haven", "Jamaica", "Kingsbridge and Riverdale", "North Queens", "Southeast Bronx", "Southeast Queens", "Southern Brooklyn", "Southwest Brooklyn", "Southwest Queens", "Sunset Park", "West Central Queens")))
+
+complete_dataset %>%
+  group_by(pickup_neighborhood) %>%
+  summarise(n())
 ```
 
 
@@ -273,7 +357,7 @@ complete_dataset %>%
   DT::datatable(options = list(pageLength=10, scrollX='400px'), filter = 'top')
 ```
 
-- dropoff_neighborhood: we have applied the same principle as in pickup_neighborhood and decresed the number of classes within the feature. 
+- dropoff_neighborhood: we have applied the same principle as in pickup_neighborhood and decresed the number of classes within the feature.
 ```{r}
 complete_dataset <- complete_dataset %>%
   mutate(dropoff_neighborhood = fct_collapse(dropoff_neighborhood,
@@ -285,8 +369,19 @@ complete_dataset %>%
   summarise(n())
 ```
 
+- tolls_amount: 96.5% of all taxi drives did not include the tolls. This feature might be a bad predictor due to lack of variation, but we shall see that in the modeling step and in the mean time anwser the question of retaining this feature or not. 
+```{r}
+complete_dataset %>%
+  group_by(tolls_amount) %>%
+  summarise(n())
+
+```
+
+
 
 ## Final check
+
+Now we have a quick pick into the data set, just to spot if there are any irregularities. There are some features that have high positiv skew, which indicates non-normal exponentional distribution. Some as well have big kurtosis, which gives us a picture that some distributions have high peeks. Other than this preliminary check, we shouldn't do anything more, because of the integrity of training and test set. 
 
 ```{r, cached = TRUE} 
 complete_dataset %>%
@@ -311,21 +406,37 @@ dim(train) # 80000    19
 
 # Exploratory Data Analysis
 
+The goal of the next step is to find out the distribtion of our data set, what kind of relationships between our variables exist and are there any outliners. 
+
 ```{r}
-# Spliting a target feature on 10  Parts for EDA
+# Spliting a target feature on 6  Parts for EDA
 train$tip_amount_freq <- as.factor(cut2(train$tip_amount, g = 6))
 
 # https://stackoverflow.com/questions/6104836/splitting-a-continuous-variable-into-equal-sized-groups?noredirect=1&lq=1
 ```
+
+We partition our target feature into 6 different parts and by doing so, we are making it a classifier that indicates the spread of our target feature on within feature's distribution. 
+
 ## Numerical Features {.tabset}
 
 ### trip_duration
 ```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
-train %>%
+p1 <- train %>%
   ggplot(aes(x = trip_duration, fill = tip_amount_freq)) +
   geom_histogram(bins = 150) +
   labs(x = "trip_duration") +
   ggtitle("trip_duration")
+
+p2 <- train %>%
+  ggplot(aes(x = tip_amount_freq, y = trip_duration )) +
+  geom_boxplot() +
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(x = "trip_duration") +
+  ggtitle("trip_duration")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+
 ```
 
 ### trip_distance
