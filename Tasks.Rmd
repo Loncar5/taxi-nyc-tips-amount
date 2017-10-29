@@ -1,0 +1,33 @@
+---
+title: "Tasks"
+author: "Luka Loncar"
+date: '27 listopada 2017 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Feature engineering:
+
+- partition the date features into more date features by: hour, day and any other options if applicable. (+)
+- duration (+)
+- calculate KPIs: tip/distance etc (EDA)
+- categorical -> dummy (-)
+- grouping where necessary, which means to group those rare categories into one category instead of having them many. 
+- prep weather data and merge into dataset (+)
+
+- merge population/crime data in (optional)
+
+Start thinking about:
+
+- baseline, evaluation split, evaluation metric
+
+Project report:
+
+- I would like to see a few more plots than you showed today (plots that
+help understand business as well as plots that help us with data science)
+- bring an outline for getting feedback
+
+

@@ -1,0 +1,764 @@
+---
+title: "Taxi - Tip Prediction Project"
+output:
+ html_document:
+    number_sections: TRUE
+    toc: TRUE
+    fig_height: 6
+    fig_width: 9
+    code_folding: hide
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE, error=FALSE)
+```
+
+
+# Data Understanding and Data Preparation
+
+The first part of the analysis is devided by IDA and EDA. Those are the preliminary steps before feature engineering, modeling and the final evaluation stage.
+
+# Initial Data Analysis
+Here are some of the ideas and questions that are behind IDA and EDA for the Taxi data set:
+
+**IDA (Initial Data Analysis)**
+
+- are there any external data sets that we can use in combination with our main data set?
+
+- are there any *NA's* in the data set?
+
+- are the data tpyes correctly assigned?
+
+- are there any errors/anomalies within the data set?
+
+- create features that could be very informitative during EDA and predictiong modeling stage.
+
+**EDA (Exploratory Data Analysis)**
+
+- the find out the distribution of the data set
+
+- what are the relationships between the features and how does each feature relate with target feature?
+
+- are there any outliners and the explanation behind those outliners
+
+
+## Load Libraries and Helper Functions 
+
+```{r, message = FALSE, warning=FALSE, cached = TRUE}
+library("Hmisc") # Descriptive Statistics
+library("psych") # Descriptive Statistics
+library('tidyverse') # ggplot2, dplyr, tidyr, readr, purrr, tibble
+# library('scales') # visualisation
+library('grid') # visualisation
+library('RColorBrewer') # visualisation
+library('corrplot') # visualisation
+library('alluvial') # visualisation
+library('plotly')
+library('readr') # input/output
+library('data.table') # data manipulation
+library('tidyr') # data wrangling
+library('stringr') # string manipulation
+library('forcats') # factor manipulation
+library('lubridate') # date and time
+library('xgboost') # modelling
+library('caret') # modelling
+library("DT") # creating tables
+library("knitr") # rmarkdown
+```
+
+The multiplot function is used for gathering several graphs into more appealing format. Down below is the explanation how to use it. To learn more visit the [Cookbook for R](http://www.cookbook-r.com/Graphs/Multiple_graphs_on_one_page_(ggplot2)/).
+```{r}
+# Define multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+
+# Normalize Function
+normalize <- function(x) {
+    return ((x - min(x)) / (max(x) - min(x)))
+}
+
+```
+
+## Load The Data Sets {.tabset}
+
+The first data set is the Taxi data set and is the basis upon which we will try to predict the tip amount, based on other features. 
+
+### Loading Taxi Main Data Set
+```{r}
+taxi_data <- "sample100000.csv"
+taxi_data <- as.tibble(fread(taxi_data))
+
+taxi_data <- taxi_data %>%
+  mutate(date = date(pickup_datetime),
+         wday = wday(pickup_datetime, label = TRUE),
+         wday = fct_relevel(wday, c("Mon", "Tues", "Wed", "Thurs", "Fri", "Sat", "Sun")),
+         hour = hour(pickup_datetime),
+         work = (hour %in% seq(8,18)) & (wday %in% c("Mon","Tues","Wed","Thurs","Fri")),
+         trip_duration = round(digits = 4, difftime(dropoff_datetime, pickup_datetime))) %>%
+  arrange(pickup_datetime)
+```
+
+There are **100000** observations and **13** features. 
+
+Here are some of the features that we have created from pre-existing features in the taxi_data:
+
+- date: date was created because it will serve as a primary key between taxi_data and weather data set.
+
+- wday: is devided upon **7** days of the week.
+
+- hour: indicates a hour of a day for each observation
+
+- work: if TRUE then that means the observation was recorded during the work time, while FALSE records the observation after the working hours
+
+- trip_duration: represents the difference between dropoff and pickup time. 
+
+### Loading The Weather Data Set
+
+The Weather data set was taken from the [NCDC](https://www.ncdc.noaa.gov/) 
+```{r, warning = FALSE, message = FALSE, echo=TRUE, cached = TRUE}
+weather <- "weather.csv"
+weather <- as.tibble(fread(weather))
+
+weather <- weather %>%
+  select(DATE, TMAX,TMIN)
+
+weather <- weather %>%
+  mutate(date = date(DATE))
+
+foo <- weather %>%
+  select(date,TMAX, TMIN)
+
+#rm(weather)
+
+foo <- foo %>%
+ filter(date > "2015-05-31" & date <"2015-07-1")
+  
+foo <- foo %>%
+  head(30)
+```
+
+Weather data set represents date, maximal and minimal temperature for each day of the month for June. Date feature is a key feature, with which we will connect the taxi_data and weather data sets. 
+
+### Combining The Two Data Sets
+```{r}
+complete_dataset <- taxi_data %>%
+  inner_join(foo, by = "date")
+#rm(foo)
+#rm(taxi_data)
+```
+
+## Data Set
+```{r}
+complete_dataset %>%
+  head(25) %>%
+  DT::datatable(options = list(pageLength=10, scrollX='400px'), filter = 'top')
+```
+
+## NA check
+
+Great, there aren't any NA's in the data set. That most certainly makes the analysis easier, however we have to further investigate if NA's are registered under some other value. 
+```{r, cached = TRUE} 
+any(is.na(complete_dataset)) #or
+sum(is.na(complete_dataset))
+```
+
+## Data Types Check
+```{r}
+glimpse(complete_dataset)
+```
+
+We see that certain features need to be adjusted into the right data type form. 
+
+## Changing Data Types Accordingly 
+
+The data types are changed because when preforming EDA, ggplo2 and many other packages, it is recommended to have features in certain data type. For example when you want to represent a categorical variable, then it is advised to use factor data type, instead of character data type. Since that shall give an analyst an opportunity to preform greater variety of visualization abilities. 
+```{r}
+complete_dataset <- complete_dataset %>%
+  mutate(pickup_datetime = ymd_hms(pickup_datetime),
+         dropoff_datetime = ymd_hms(dropoff_datetime),
+         passenger_count = factor(passenger_count),
+         pickup_borough = factor(pickup_borough),
+         dropoff_borough = factor(dropoff_borough),
+         pickup_neighborhood = factor(pickup_neighborhood),  
+         dropoff_neighborhood = factor(dropoff_neighborhood),
+         payment_type = factor(payment_type),
+         extra = factor(extra),
+         wday = factor(wday),
+         work = factor(work),
+         trip_duration = as.double(trip_duration),
+         TMAX = as.integer(TMAX),
+         TMIN = as.integer(TMIN)) %>%
+  select(-date)
+```
+
+## Error Identification Hunt  {.tabset}
+
+Next step is to find out are there any errors within the data set. Those errors could occure by importing the data set, data enrty or any other possibility. It is wise to do this check up before doing the data split, because those errors might not occure due to natural occurance, but rather from human or machine error.  
+
+## View Data By Proportions
+```{r, cached = TRUE} 
+# the package won't work with certain time data types, that's why we have to remove them, but not permanmently. It is just for the sake of descriptive statistics
+
+descriptive_stat <- complete_dataset %>%
+  select(-c(pickup_datetime, dropoff_datetime))
+
+
+Hmisc::describe(descriptive_stat) # :: selects particualr function from a library
+```
+
+## Data Cleaning 
+After going quickly going through the data proportions there are few potential errors and anomalies. The next step would be to further investigate to see if they are errors made during the data entry, importing or any other stage. This step is similar with the outliner analysis in many ways. The main difference is that in data cleaning stage you are remove anomalies, rather than outliners. Those anomalies do not represent the data set, nor the data set upon which the final model shall be build. Besides imputing or removing the errors, we will also group classes of some categorical features with one another. We do this so that we have less classes with only few observations and secondly when we wanto to create dummy variables out of our categorical features, we will have less features that don't have any variation in them self, due to the sheer small size of observations.
+
+- passenger_count: It appears that there are occasions where a taxi driver had 0 passengers, but still managed to bill the immaginative passanger. After looking deeper into the problem, we discover that both classes of 0 and 1 passanger are quite similar to one another, thereby we assigned them as class a "1". 
+
+```{r}
+complete_dataset %>%
+  filter(passenger_count == 0) %>%
+  DT::datatable(options = list(pageLength=10, scrollX='400px'), filter = 'top')
+```
+
+Procedure of putting observations with zero passangers into the class of "1". 
+
+```{r}
+complete_dataset <- complete_dataset %>%
+  mutate(passenger_count = fct_collapse(passenger_count, "1" = c("1", "0")))
+```
+
+
+- trip_distance
+
+It seems that there are three trip distances that fall into the category of potential errors. After a more detail data examination we find out that there is a trip that lasted only 23 minutes, but on the contrary more than 3000 kilometers were passed in those 23 minutes. 
+
+To solve this particualr error we could either take an average of 23 minute trip and draw a parallel on how much a trip of such magnitude did in regards to the trip distance. Secondly, we could substitute it with the third quartile.  
+
+The second problematic observation has more trip distance of 58.84 kilometers and the trip duration was 91 minutes. That could actually be a possible scenario, however higly unlikely. Also the second observation has fare_amount of 263, which is twice as much as the second maximum value of the fare_amount feature. That finding gives us a hint that something is out proportion in here.  
+
+The third obeservation states that taxi passed 111 kilomenters in just 52 minutes, which as well highly unlikely since New York Manhattan is not a place where a car can go above 50 kilometers for a long period of time, due to the traffic. 
+
+```{r}
+
+complete_dataset %>%
+  filter(trip_distance > 43.625) 
+
+# 1 Taking the average of trip distance between 20 and 25, and replacing that average with 3008.3 km. 
+complete_dataset %>%
+  filter(trip_distance > 20 & trip_distance < 25) %>%
+  summarise(mean(trip_duration)) #49.44
+
+
+complete_dataset <- complete_dataset %>%
+  mutate(trip_distance = replace(trip_distance, trip_distance == 3008.3, 49.44)) %>%
+  as.data.frame()
+
+# 2 Replacing trip distance of 111.7 with 10.24, on the basis of average of trip duration between 55 and 60. 
+complete_dataset %>%
+  filter(trip_duration > 55 & trip_duration < 60) %>%
+  summarise(mean(trip_distance)) # 10.24
+
+complete_dataset <- complete_dataset %>%
+  mutate(trip_distance = replace(trip_distance, trip_distance == 111.700, 10.24)) %>%
+  as.data.frame()
+
+
+
+complete_dataset %>%
+  filter(trip_distance >= 25) %>%
+  DT::datatable(options = list(pageLength=10, scrollX='400px'), filter = 'top')
+
+# Second option:
+# qn = quantile(complete_dataset$trip_distance, c(0.01, 0.99), na.rm = TRUE)
+#   
+# complete_dataset <- within(complete_dataset, { trip_distance = ifelse(trip_distance < qn[1], qn[1], trip_distance)
+#                   trip_distance = ifelse(trip_distance > qn[2], qn[2], trip_distance)})
+
+```
+
+- extra: We have one observation with 8.5 value. This value must be an error or an old policy that ended on the first day of June. Further investigation is needed to confirm this. First argument for a such big fare, could be found on the basis that trip was done in the evening at around 21:04. Second argument for a such outliner could be explained in sense that the value is part of a population that is not represented in June month, but rather in some other month. 
+
+```{r}
+complete_dataset %>%
+  filter(extra == 8.5) %>%
+  DT::datatable(options = list(pageLength=10, scrollX='400px'), filter = 'top')
+```
+
+We have concluted to add "8.5" extra class, into the class "1", because other features of the "8.5" observation are similary distributed as the features of class "1".
+
+```{r}
+complete_dataset <- complete_dataset %>%
+  mutate(extra = fct_collapse(extra, "1" = c("1", "8.5")))
+
+complete_dataset %>%
+  group_by(extra) %>%
+  summarise(n())
+```
+
+- pickup_neighborhood: There are 35 distinct classes of pickup_neighborhood factor variable. Many of the classes have one to twenty observations, thereby we have taken those classes and made a new class "Other", for the sole purpose of making a better predictive model.
+```{r}
+complete_dataset <- complete_dataset %>%
+  mutate(pickup_neighborhood = fct_collapse(pickup_neighborhood,
+                                          Other = c("Borough Park", "Bronx Park and Fordham", "Canarsie and Flatlands", "Central Bronx", "Central Queens", "East New York and New Lots", "Flatbush", "High Bridge and Morrisania", "Hunts Point and Mott Haven", "Jamaica", "Kingsbridge and Riverdale", "North Queens", "Southeast Bronx", "Southeast Queens", "Southern Brooklyn", "Southwest Brooklyn", "Southwest Queens", "Sunset Park", "West Central Queens")))
+
+complete_dataset %>%
+  group_by(pickup_neighborhood) %>%
+  summarise(n())
+```
+
+
+- dropoff_borough:the observation might be a outliner in this sample, but in fact they could be part of much greater population, thereby I won't remove them. By investigating the data more granularly, we find out that all the observation are in order and give high information regarding the tip ammount. The average tip amount of "Staten Island" is more than an average. We would need more confirmatory data to remove those observations. 
+```{r}
+complete_dataset %>%
+  group_by(dropoff_borough) %>%
+  summarise(n())
+
+complete_dataset %>%
+  filter(dropoff_borough == "Staten Island") %>%
+  DT::datatable(options = list(pageLength=10, scrollX='400px'), filter = 'top')
+```
+
+- dropoff_neighborhood: we have applied the same principle as in pickup_neighborhood and decresed the number of classes within the feature.
+```{r}
+complete_dataset <- complete_dataset %>%
+  mutate(dropoff_neighborhood = fct_collapse(dropoff_neighborhood,
+                                          Other = c("Central Bronx", "Central Queens", "East New York and New Lots", "Flatbush", "High Bridge and Morrisania", "Hunts Point and Mott Haven", "Jamaica", "Kingsbridge and Riverdale", "North Queens", "Southeast Bronx", "Southeast Queens", "Southern Brooklyn", "Southwest Brooklyn", "Southwest Queens", "Sunset Park", "West Central Queens", "Northeast Bronx", "Northeast Queens", "Port Richmond", "Rockaways", "South Shore",
+                                                    "Stapleton and St. George")))
+
+complete_dataset %>%
+  group_by(dropoff_neighborhood) %>%
+  summarise(n())
+```
+
+- tolls_amount: 96.5% of all taxi drives did not include the tolls. This feature might be a bad predictor due to lack of variation, but we shall see that in the modeling step and in the mean time anwser the question of retaining this feature or not. 
+```{r}
+complete_dataset %>%
+  group_by(tolls_amount) %>%
+  summarise(n())
+
+```
+
+
+
+## Final check
+
+Now we have a quick pick into the data set, just to spot if there are any irregularities. There are some features that have high positiv skew, which indicates non-normal exponentional distribution. Some as well have big kurtosis, which gives us a picture that some distributions have high peeks. Other than this preliminary check, we shouldn't do anything more, because of the integrity of training and test set. 
+
+```{r, cached = TRUE} 
+complete_dataset %>%
+  select(-starts_with("pickup_datetime"), -starts_with("dropoff_datetime"))%>%
+  psych::describe() 
+```
+
+## Data Split Into Training and Test Set {-}
+```{r}
+set.seed(4567)
+indexes <- sample(1:nrow(complete_dataset), size=0.20*nrow(complete_dataset)) #Sample Indexes
+# Split data
+test <- complete_dataset[indexes,]
+dim(test)  #  20000    19
+train <- complete_dataset[-indexes,]
+dim(train) # 80000    19
+
+# Remove Target feature from the test set
+# test$tip_amount <- NULL
+# dim(test) # 25000    12
+```
+
+# Exploratory Data Analysis
+
+The goal of the next step is to find out the distribtion of our data set, what kind of relationships between our variables exist and are there any outliners. 
+
+```{r}
+# Spliting a target feature on 6  Parts for EDA
+train$tip_amount_freq <- as.factor(cut2(train$tip_amount, g = 6))
+
+# https://stackoverflow.com/questions/6104836/splitting-a-continuous-variable-into-equal-sized-groups?noredirect=1&lq=1
+```
+
+We partition our target feature into 6 different parts and by doing so, we are making it a classifier that indicates the spread of our target feature on within feature's distribution. 
+
+## Numerical Features {.tabset}
+
+### trip_duration
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  ggplot(aes(x = trip_duration, fill = tip_amount_freq)) +
+  geom_histogram(bins = 150) +
+  labs(x = "trip_duration") +
+  ggtitle("trip_duration")
+
+p2 <- train %>%
+  ggplot(aes(x = tip_amount_freq, y = trip_duration )) +
+  geom_boxplot() +
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(x = "trip_duration") +
+  ggtitle("trip_duration")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+
+```
+
+### trip_distance
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  ggplot(aes(x = trip_distance, fill = tip_amount_freq)) +
+  geom_histogram(bins = 150) +
+  labs(x = "trip_distance") +
+  ggtitle("trip_distance")
+```
+
+### fare_amount
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  ggplot(aes(x = fare_amount, fill = tip_amount_freq)) +
+  geom_histogram(bins = 150) +
+  labs(x = "fare_amount") +
+  ggtitle("fare_amount")
+```
+
+### tolls_amount
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  ggplot(aes(x = tolls_amount, fill = tip_amount_freq)) +
+  geom_histogram(bins = 150) +
+  labs(x = "tolls_amount") +
+  ggtitle("tolls_amount")
+```
+
+
+
+## Categorical Features {.tabset}
+
+### Pickup_borough
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  ggplot(aes(x = pickup_borough, fill = tip_amount_freq)) +
+  geom_bar() +
+  labs(x = "pickup_borough") +
+  ggtitle("Tip Amount based on Pickup location as per Region")
+
+
+p2 <- train %>%
+  ggplot(aes(x = pickup_borough, fill = tip_amount_freq)) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(x = "pickup_borough") +
+  ggtitle("Freqeuncy of Tip Amount as per Region")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+```
+
+### Tip Amount based on Pickup location as per Neighborhood
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+ train %>%
+  ggplot(aes(x = pickup_neighborhood, fill = tip_amount_freq)) +
+  geom_bar() +
+  coord_flip() +
+  labs(x = "pickup_borough") +
+  ggtitle("Tip Amount based on Pickup location as per Neighborhood")
+
+```
+
+### Freqeuncy of Tip Amount as per Neighborhood
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%"}
+ train %>%
+  ggplot(aes(x = pickup_neighborhood, fill = tip_amount_freq)) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  labs(x = "pickup_borough") +
+  ggtitle("Freqeuncy of Tip Amount as per Neighborhood")
+```
+
+### dropoff location
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  ggplot(aes(x = dropoff_borough, fill = tip_amount_freq)) +
+  geom_bar() +
+  labs(x = "pickup_borough") +
+  ggtitle("Tip Amount based on dropoff location as per Region")
+
+p2 <- train %>%
+  ggplot(aes(x = dropoff_borough, fill = tip_amount_freq)) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  labs(x = "pickup_borough") +
+  ggtitle("Freqeuncy of Tip Amount as per Region")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+
+```
+
+### Tip Amount based on dropoff location as per Neighborhood
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+ train %>%
+  ggplot(aes(x = dropoff_neighborhood, fill = tip_amount_freq)) +
+  geom_bar() +
+  coord_flip() +
+  labs(x = "dropoff_neighborhood") +
+  ggtitle("Tip Amount based on dropoff location as per Neighborhood")
+
+
+```
+
+### Freqeuncy of Tip Amount as per Neighborhood
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  ggplot(aes(x = dropoff_neighborhood, fill = tip_amount_freq)) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  labs(x = "dropoff_neighborhood") +
+  ggtitle("Freqeuncy of Tip Amount as per Neighborhood")
+```
+
+### Payment Type and Passanger Count
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  ggplot(aes(x = payment_type, fill = tip_amount_freq)) +
+  geom_bar() +
+  labs(x = "payment_type") +
+  ggtitle("Tip Amount based on dropoff location as per payment type")
+
+p2 <- train %>%
+  ggplot(aes(x = passenger_count, fill = tip_amount_freq)) +
+  geom_bar() +
+  labs(x = "passenger_count") +
+  ggtitle("Tip Amount based on dropoff location as per passenger count ")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+```
+
+
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  ggplot(aes(x = TMIN, fill = tip_amount_freq)) +
+  geom_histogram(bins = 30) +
+  labs(x = "TMIN") +
+  ggtitle("TMIN")
+```
+
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  ggplot(aes(x = TMAX, fill = tip_amount_freq)) +
+  geom_histogram(bins = 30) +
+  labs(x = "TMAX") +
+  ggtitle("TMAX")
+```
+
+## Time Features {.tabset}
+### pickup_datetime per Month and Day
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  mutate(hpick = hour(pickup_datetime),
+         Month = factor(month(pickup_datetime, label = TRUE))) %>%
+  group_by(hpick, Month) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = Month)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+p2 <- train %>%
+  mutate(hpick = hour(pickup_datetime),
+         wday = factor(wday(pickup_datetime, label = TRUE))) %>%
+  group_by(hpick, wday) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = wday)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+```
+
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  mutate(hpick = hour(pickup_datetime),
+         Month = factor(month(pickup_datetime, label = TRUE))) %>%
+  group_by(hpick, tip_amount_freq) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = tip_amount_freq)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+p2 <- train %>%
+  mutate(hpick = hour(pickup_datetime),
+         wday = factor(wday(pickup_datetime, label = TRUE))) %>%
+  group_by(hpick, tip_amount_freq) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = tip_amount_freq)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+```
+
+
+### Drop Off per Month and Day
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  mutate(hpick = hour(dropoff_datetime),
+         Month = factor(month(dropoff_datetime, label = TRUE))) %>%
+  group_by(hpick, Month) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = Month)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+p2 <- train %>%
+  mutate(hpick = hour(dropoff_datetime),
+         wday = factor(wday(dropoff_datetime, label = TRUE))) %>%
+  group_by(hpick, wday) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = wday)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+```
+
+### Drop Off per Month and Day
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  mutate(hpick = hour(pickup_datetime)) %>%
+  group_by(hpick, tip_amount_freq) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = tip_amount_freq)) +
+  geom_point(size = 4) +
+  labs(x = "Hour of the day", y = "Total number of pickups") +
+  theme(legend.position = "none")
+```
+
+### Tip Ammount per hour of Day
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+p1 <- train %>%
+  mutate(hpick = hour(dropoff_datetime),
+         Month = factor(month(dropoff_datetime, label = TRUE))) %>%
+  group_by(hpick, Month) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = Month)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+p2 <- train %>%
+  mutate(hpick = hour(dropoff_datetime),
+         wday = factor(wday(dropoff_datetime, label = TRUE))) %>%
+  group_by(hpick, wday) %>%
+  count() %>%
+  ggplot(aes(hpick, n, color = wday)) +
+  geom_line(size = 1.5) +
+  labs(x = "Hour of the day", y = "count")
+
+layout <- matrix(c(1,2),2,1,byrow=FALSE)
+multiplot(p1, p2, layout=layout)
+```
+
+
+
+## Target Feature {.tabset}
+
+### Target Feature
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  ggplot(aes(x = tip_amount)) +
+  geom_histogram(fill = "red", bins = 200) +
+  labs(x = "Average tip amount")
+```
+
+### Target Feature with scale_y_log10
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  ggplot(aes(x = tip_amount)) +
+  geom_histogram(fill = "red", bins = 200) +
+  scale_y_log10() +
+  labs(x = "Average tip amount")
+```
+
+### Target Feature with scale_y_log10 and filter tip_amount > 0.1
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+train %>%
+  filter(tip_amount > 0.1) %>%
+  ggplot(aes(x = tip_amount)) +
+  geom_histogram(fill = "red", bins = 200) +
+  scale_y_log10() +
+  labs(x = "Average tip amount")
+```
+
+## Correlation
+
+```{r fig.align = 'default', warning = FALSE, fig.cap ="Fig. 3", out.width="100%", cached = TRUE}
+correlation <- train %>%
+  select(pickup_borough, pickup_neighborhood, dropoff_borough,dropoff_neighborhood, 
+         wday, hour, work, trip_duration, TMAX, TMIN,
+         passenger_count, trip_distance, payment_type, fare_amount,
+         extra, tolls_amount, tip_amount) %>%
+  mutate(TMIN = as.integer(TMIN),
+         TMAX = as.integer(TMAX),
+         trip_duration = as.integer(trip_duration),
+         work = as.integer(work),
+         hour = as.integer(hour),
+         wday = as.integer(wday),
+         dropoff_neighborhood = as.integer(dropoff_neighborhood),
+         dropoff_borough = as.integer(dropoff_borough),
+         pickup_neighborhood = as.integer(pickup_neighborhood),
+         pickup_borough = as.integer(pickup_borough),
+         passenger_count = as.integer(passenger_count),
+         trip_distance = as.integer(trip_distance),
+         payment_type = as.integer(payment_type),
+         fare_amount = as.integer(fare_amount),
+         extra = as.integer(extra),
+         tolls_amount = as.integer(tolls_amount),
+         tip_amount = as.integer(tip_amount))
+
+correlation %>%
+  cor(use="complete.obs", method = "spearman") %>%
+  corrplot(type="lower", method="circle", diag=FALSE)
+```
+
+

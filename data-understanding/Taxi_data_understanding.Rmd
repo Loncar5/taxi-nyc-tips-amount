@@ -1,0 +1,177 @@
+---
+title: "Taxi - Tip Prediction Project"
+output:
+  html_document:
+    code_folding: hide
+    fig_height: 4.5
+    fig_width: 7
+    highlight: tango
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE, error=FALSE)
+```
+
+#  Data Understanding :D
+
+## Load Libraries and Helper Functions
+
+```{r, message = FALSE, warning=FALSE, cached = TRUE}
+library("Hmisc") # Descriptive Statistics
+library("psych") # Descriptive Statistics
+library('tidyverse') # ggplot2, dplyr, tidyr, readr, purrr, tibble
+library('scales') # visualisation
+library('grid') # visualisation
+library('RColorBrewer') # visualisation
+library('corrplot') # visualisation
+library('alluvial') # visualisation
+library('readr') # input/output
+library('data.table') # data manipulation
+library('tidyr') # data wrangling
+library('stringr') # string manipulation
+library('forcats') # factor manipulation
+library('lubridate') # date and time
+library('xgboost') # modelling
+library('caret') # modelling
+library("DT") # Interactive View of the Data
+```
+
+
+We use the *multiplot* function, courtesy of [R Cookbooks](http://www.cookbook-r.com/Graphs/Multiple_graphs_on_one_page_(ggplot2)/) to create multi-panel plots. It will come as a very handy visualization tool later on in Exploratory Data Analysis. To use the Multiplot function you first have to load it into your environment.
+
+```{r}
+# Define multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+
+# Normalize Function
+normalize <- function(x) {
+    return ((x - min(x)) / (max(x) - min(x)))
+}
+
+```
+
+## Loading Taxi Main Data Set
+```{r}
+taxi_data <- "sample100000.csv"
+taxi_data <- as.tibble(fread(taxi_data))
+```
+
+
+```{r}
+taxi_data <- taxi_data %>%
+  mutate(date = date(pickup_datetime),
+         month = month(pickup_datetime, label = TRUE),
+         wday = wday(pickup_datetime, label = TRUE),
+         wday = fct_relevel(wday, c("Mon", "Tues", "Wed", "Thurs", "Fri", "Sat", "Sun")),
+         hour = hour(pickup_datetime),
+         work = (hour %in% seq(8,18)) & (wday %in% c("Mon","Tues","Wed","Thurs","Fri")),
+         trip_duration = round(digits = 4, difftime(dropoff_datetime, pickup_datetime))) %>%
+  arrange(pickup_datetime)
+```
+
+```{r}
+weather <- "weather.csv"
+weather <- as.tibble(fread(weather))
+
+weather <- weather %>%
+  select(DATE, TMAX,TMIN)
+```
+
+```{r}
+weather <- weather %>%
+  mutate(date = date(DATE))
+
+foo <- weather %>%
+  select(date,TMAX, TMIN)
+
+# rm(weather)
+
+foo <- foo %>%
+ filter(date > "2015-05-31" & date <"2015-07-1")
+  
+foo <- foo %>%
+  head(30)
+```
+
+
+```{r}
+complete_dataset <- taxi_data %>%
+  inner_join(foo, by = "date")
+# rm(foo)
+# rm(taxi_data)
+```
+
+```{r}
+census_block_loc <- "census_block_loc.csv"
+census_block_loc <- as.tibble(fread(census_block_loc))
+
+n_distinct(census_block_loc$County)
+
+n_distinct(complete_dataset$pickup_borough)
+
+table_freq(complete_dataset$pickup_borough)
+table_freq(complete_dataset)
+```
+
+```{r}
+nyc_census_tracts <- "nyc_census_tracts.csv"
+nyc_census_tracts <- as.tibble(fread(nyc_census_tracts))
+
+n_distinct(nyc_census_tracts)
+
+summary(nyc_census_tracts)
+
+#https://www.kaggle.com/muonneutrino/new-york-city-census-data
+```
+
