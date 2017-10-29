@@ -72,3 +72,8 @@ str(climate_data) # Now the dataset is ready to be merged.
 # Join the climate data (GHCN (Global Historical Climatology Network))
 
 sample_merged <- merge(x = sample, y = climate_data, by = "date", all.x = TRUE)
+
+# I want to add household income data in neighborhood level. I will write the current merged table and will do some manual cleaning stuff for neigborhood names.
+
+write.csv(sample_merged, file = "sample_merged.csv")
+
