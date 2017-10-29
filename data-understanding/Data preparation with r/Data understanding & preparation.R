@@ -43,18 +43,32 @@ sample$date = format(sample$pickup_datetime, "%Y-%m-%d")
 
 # Read the climate data. This data includes average temperature measured in Fahrenheit for each day in 2015. Also There are 7 dummies for categorical weather type variable.
 
-climate_data <- read.csv("ny-climate-data.csv")
+climate_data <- read.csv("nyc-daily-weather.csv")
 
 climate_data[is.na(climate_data)] <- 0  # Fix the NA's in climate data
 
-# Join the climate data
+summary(climate_data) 
 
-colnames(climate_data)[1] <- "date" # Column names should match to use join function.
+# W02, W04, W06 will not be useful. 
+# W01 and W08 are very similar. W01 = Fog, ice fog, or freezing fog (may include heavy fog) W08 = Smoke or haze. So we can start with keeping one of them.
+# Average temperature column is empty for some reason so did not include that column. We can create a new average column based on average of max-min temperatures.
+# First column is location identifier so we can remove that as well.
 
-sample_2 <- merge(x = sample, y = climate_data, by = "date", all.x = TRUE)
+climate_data <- subset(climate_data, , -c(1,8,9,10,11)) #Drop the columns that we are not going to use.
 
-colnames(sample_2)[17] <- "average_temperature"
+climate_data$temperature <- (climate_data$TMAX + climate_data$TMIN) / 2 #Add the average temp. column.
+climate_data <- subset(climate_data, , -c(4,5))
 
-#ftp://ftp.ncdc.noaa.gov/pub/data/cdo/documentation/LCD_documentation.pdf for the definition of weather columns.
+colnames(climate_data)[1] <- "date"
+colnames(climate_data)[2] <- "precipitation"
+colnames(climate_data)[3] <- "snowfall"
+colnames(climate_data)[4] <- "fog"
 
+str(climate_data)
+climate_data$date <- strptime(climate_data$date,"%Y-%m-%d")
+climate_data$fog <-  factor
+str(climate_data) # Now the dataset is ready to be merged. 
 
+# Join the climate data (GHCN (Global Historical Climatology Network))
+
+sample_merged <- merge(x = sample, y = climate_data, by = "date", all.x = TRUE)
