@@ -595,29 +595,16 @@ If you want to  "knit" your rmarkdown in to PDF format, I suggest to install fir
 
 https://stackoverflow.com/questions/25856362/pandoc-document-conversion-failed-with-error-43-pdflatex-the-memory-dump-file
 
-## How to change result code font?
 
-How to change the font within the function results? There is a font difference beween text in markdown and output code.
-
-## R Studio Connect
-
-I am also experimenting with https://beta.rstudioconnect.com, because later on we could make Shiny interactive applications. We can discuss further when we meet. As soon as we all agree that we will use it, I'll write notes on how to use it. 
-
-## Gitbhub
-
-We could use Github as a version control. Github goes hand in hand with projects ability that is within Rstudio. One of our team members could be "controlling officer" and teach all the team members how to use it and what is the general idea behind using version control in ML. (**Responsibility of: ________**)
-
-
-Dear team members if you have any problems, please do contact our customer support unit: *luka.loncar5@gmail.com*
 
 ```{r}
-train$tip_amount_freq <- NULL
-model <- lm(tip_amount ~., train)
-p <- predict(model, test)
-
-error <- p - train$tip_amount
-
-sqrt(mean(error^2))
-predict(model, test)
+# train$tip_amount_freq <- NULL
+# model <- lm(tip_amount ~., train)
+# p <- predict(model, test)
+# 
+# error <- p - train$tip_amount
+# 
+# sqrt(mean(error^2))
+# predict(model, test)
 ```
 

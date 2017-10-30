@@ -1,6 +1,7 @@
 ---
 title: "Taxi - Tip Prediction Project"
 output:
+<<<<<<< HEAD
   word_document:
     toc: yes
   html_document:
@@ -9,6 +10,14 @@ output:
     fig_width: 9
     number_sections: yes
     toc: yes
+=======
+ html_document:
+    number_sections: TRUE
+    toc: TRUE
+    fig_height: 6
+    fig_width: 9
+    code_folding: hide
+>>>>>>> 98101422d1e74580caafbc9555004f6c22e46cd4
 date: "`r Sys.Date()`"
 ---
 
