@@ -1,0 +1,197 @@
+---
+title: "Taxi - Tip Prediction Project"
+output:
+  html_document:
+    code_folding: hide
+    fig_height: 6
+    fig_width: 9
+    number_sections: yes
+    toc: yes
+  word_document:
+    toc: yes
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE, error=FALSE)
+```
+
+The first part of the analysis is devided by IDA, EDA and Feature Engineering. Those are the preliminary steps before feature engineering, modeling and the final evaluation stage.
+
+Here are some of the ideas and questions that are behind IDA and EDA for the Taxi data set:
+
+**Data Understanding - IDA (Initial Data Analysis)**
+
+- are there any external data sets that we can use in combination with our main data set?
+
+- are there any *NA's* in the data set?
+
+- are the data tpyes correctly assigned?
+
+- are there any errors/anomalies within the data set?
+
+- create features that could be very informitative during EDA and predictiong modeling stage.
+
+#Data Understanding - Initial Data Analysis
+
+## Load Libraries and Helper Functions 
+
+```{r, message = FALSE, warning=FALSE, cached = TRUE}
+library("ggplot2")
+library("Hmisc") # Descriptive Statistics
+library("psych") # Descriptive Statistics
+library('tidyverse') # ggplot2, dplyr, tidyr, readr, purrr, tibble
+library("lubridate")
+# library('scales') # visualisation
+library('grid') # visualisation
+library('RColorBrewer') # visualisation
+library('corrplot') # visualisation
+library('alluvial') # visualisation
+library('plotly')
+library('geosphere')
+library('leaflet')
+library('leaflet.extras')
+library('maps')
+library("ggvis")
+library('readr') # input/output
+library('data.table') # data manipulation
+library('tidyr') # data wrangling
+library('stringr') # string manipulation
+library('forcats') # factor manipulation
+library('lubridate') # date and time
+library('xgboost') # modelling
+library('caret') # modelling
+library("DT") # creating tables
+library("knitr") # rmarkdown
+```
+
+## Load The Data Sets {.tabset}
+
+The first data set is the Taxi data set and is the basis upon which we will try to predict the tip amount, based on other features. 
+
+### Loading Taxi Main Data Set
+```{r}
+taxi_data <- "taxi_data_2015"
+taxi_data <- as.tibble(fread(taxi_data))
+
+taxi_data <- taxi_data %>%
+  mutate(hour = lubridate::hour(pickup_datetime))
+
+taxi_data <- taxi_data %>%
+  mutate(date = date(pickup_datetime),
+         month = lubridate::month(pickup_datetime, label = TRUE),
+         wday = lubridate::wday(pickup_datetime, label = TRUE, abbr = FALSE),
+         wday = fct_relevel(wday, c("Mon", "Tues", "Wed", "Thurs", "Fri", "Sat", "Sun")),
+         #hour = lubridate::hour(pickup_datetime),
+         work = ifelse((hour %in% seq(7,18)) & (wday %in% c("Mon","Tues","Wed","Thurs","Fri")),1, 0),
+         morning = ifelse((hour %in% seq(0, 5)), 1, 0),
+         mid_day = ifelse((hour %in% seq(6, 11)), 1, 0),
+         evening = ifelse((hour %in% seq(12, 17)), 1, 0),
+         night = ifelse((hour %in% seq(23, 18)),1, 0),
+         blizzard = ifelse((!( (date < ymd("2015-01-22") | (date > ymd("2015-01-29"))))), 1, 0),
+         pickup_datetime = as.POSIXct(strptime(pickup_datetime, "%Y-%m-%d %H:%M:%S"),  tz = "EST"),
+         dropoff_datetime = as.POSIXct(strptime(dropoff_datetime, "%Y-%m-%d %H:%M:%S"),  tz = "EST"),
+         trip_duration = as.numeric(dropoff_datetime - pickup_datetime))
+```
+
+There are **100000** observations and **13** features. 
+
+Here are some of the features that we have created from pre-existing features in the taxi_data:
+
+- date: date was created because it will serve as a primary key between taxi_data and weather data set.
+
+- wday: is devided upon **7** days of the week.
+
+- hour: indicates a hour of a day for each observation
+
+- work: if TRUE then that means the observation was recorded during the work time, while FALSE records the observation after the working hours
+
+- trip_duration: represents the difference between dropoff and pickup time. 
+
+- morning_drive_time, mid_day, evening, night and trip_duration: are the new features that show if the taxi drive was done in the morning or at any other point in time. 
+
+### Loading The Weather Data Set
+
+The Weather data set was taken from the [NCDC](https://www.ncdc.noaa.gov/) 
+```{r, warning = FALSE, message = FALSE, echo=TRUE, cached = TRUE}
+weather <- "nyc-daily-weather.csv"
+weather <- as.tibble(fread(weather))
+
+weather <- weather %>%
+  mutate(date = date(DATE),
+         rain = as.double(PRCP),
+         snow = as.double(SNOW),
+         temp_max = as.integer(TMAX),
+         temp_min = as.integer(TMIN)) %>% 
+  select(date, rain, snow, temp_max, temp_min)
+
+weather <- weather %>%
+  mutate(rain = factor(ifelse(rain > 0.01 , 1, 0)),
+         snow = factor(ifelse(snow > 0.01 , 1, 0))) %>%
+  select(date, rain, snow, temp_max, temp_min)
+```
+
+Weather data set represents date, maximal and minimal temperature for each day of the month for June. Date feature is a key feature, with which we will connect the taxi_data and weather data sets. 
+
+### Combining The Two Data Sets
+```{r}
+complete_dataset <- taxi_data %>%
+  inner_join(weather, by = "date")
+#rm(weather)
+#rm(taxi_data)
+```
+
+## Data Set
+```{r}
+complete_dataset %>%
+  head(25) %>%
+  DT::datatable(options = list(pageLength=10, scrollX='400px'), filter = 'top')
+```
+
+## NA check
+
+Great, there aren't any NA's in the data set. That most certainly makes the analysis easier, however we have to further investigate if NA's are registered under some other value. 
+```{r, cached = TRUE} 
+any(is.na(complete_dataset)) #or
+sum(is.na(complete_dataset))
+```
+
+## Data Types Check
+```{r}
+glimpse(complete_dataset)
+```
+
+
+**Should we preform now the data split?**
+
+**What is the best way to check the data has errors(not outliners), without peeking too much? Basically, you are trying to prevent having observations that won't happen on next non-seen data set**
+
+## Data Split Into Training and Test Set {-}
+```{r}
+set.seed(4567) #do we have to use this seed for each randomization in the script?
+indexes <- sample(1:nrow(complete_dataset), size=0.20*nrow(complete_dataset)) #Sample Indexes
+# Split data
+test <- complete_dataset[indexes,]
+dim(test)  #  20000    19
+train <- complete_dataset[-indexes,]
+dim(train) # 80000    19
+
+# Remove Target feature from the test set
+# test$tip_amount <- NULL
+# dim(test) # 25000    12
+```
+
+## Randomize the order of rows
+```{r}
+train <- train[sample(nrow(train)),]
+test <- train[sample(nrow(test)),]
+```
+
+```{r}
+write.csv(train, "train.csv", row.names=F)
+```
+
+
+```{r}
+write.csv(test, "test.csv", row.names=F)
+```

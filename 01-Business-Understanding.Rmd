@@ -1,0 +1,18 @@
+---
+title: "Taxi - Tip Prediction Project"
+output:
+  html_document:
+    code_folding: hide
+    fig_height: 6
+    fig_width: 9
+    number_sections: yes
+    toc: yes
+  word_document:
+    toc: yes
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE, error=FALSE)
+```
+

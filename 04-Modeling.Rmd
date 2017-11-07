@@ -1,0 +1,123 @@
+---
+title: "Taxi - Tip Prediction Project"
+output:
+  html_document:
+    code_folding: hide
+    fig_height: 6
+    fig_width: 9
+    number_sections: yes
+    toc: yes
+  word_document:
+    toc: yes
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE, error=FALSE)
+```
+
+```{r, message = FALSE, warning=FALSE, cached = TRUE}
+library("Hmisc") # Descriptive Statistics
+library("psych") # Descriptive Statistics
+library('tidyverse') # ggplot2, dplyr, tidyr, readr, purrr, tibble
+library('corrplot') # visualisation
+library("ggvis")
+library('readr') # input/output
+library('data.table') # data manipulation
+library('tidyr') # data wrangling
+library('stringr') # string manipulation
+library('forcats') # factor manipulation
+library('lubridate') # date and time
+library('xgboost') # modelling
+library('caret') # modelling
+library("DT") # creating tables
+library("knitr") # rmarkdown
+```
+
+## Loading the Train Set
+```{r}
+train <- "train.csv"
+train <- as.tibble(fread(train))
+```
+
+## Check if all features are numeric
+```{r}
+glimpse(train)
+
+Hmisc::describe(train)
+
+train <- train %>%
+  select(-work, -RateCodeID, -mta_tax)
+```
+
+
+
+## Creating Dummy Variables
+```{r}
+dmy <- dummyVars(" ~ .", data = train, fullRank=T)
+train <- data.frame(predict(dmy, newdata = train))
+```
+
+## Removing features with near zero variance
+```{r}
+nzv <- nearZeroVar(train)
+train <- train[, -nzv]
+```
+
+
+```{r}
+train <- train %>% 
+  select(-tip_amount,tip_amount)
+
+train %>%
+  cor(use="complete.obs", method = "spearman") %>%
+  corrplot(type="lower", method="color", diag=FALSE)
+```
+
+
+# 4. Evaluate Algorithms
+```{r}
+trainControl <- trainControl(method="repeatedcv", number=2, repeats=1)
+metric <- "RMSE"
+```
+
+```{r}
+sum(is.na(train))
+```
+
+```{r}
+# LM
+set.seed(7)
+fit.lm <- train(tip_amount ~., data = train, method = "lm", metric = metric, preProc=c("center", "scale"), trControl = trainControl)
+
+# GLM
+set.seed(7)
+fit.glm <- train(tip_amount~., data = train, method = "glm", metric = metric, preProc = c("center","scale"), trControl = trainControl)
+
+# GLMNET
+set.seed(7)
+fit.glmnet <- train(tip_amount~., data=train, method="glmnet", metric=metric,preProc=c("center", "scale"), trControl=trainControl)
+                     
+# SVM
+# set.seed(7)
+# fit.svm <- train(tip_amount~., data=train, method="svmRadial", metric=metric,preProc=c("center", "scale"), trControl=trainControl)
+                  
+
+# # CART
+# set.seed(7)
+# grid <- expand.grid(.cp=c(0, 0.05, 0.1))
+# fit.cart <- train(tip_amount~., data=train, method="rpart", metric=metric, tuneGrid=grid,
+#                   preProc=c("center", "scale"), trControl=trainControl)
+
+# KNN
+# set.seed(7)
+# fit.knn <- train(tip_amount ~., data = train, method="knn", metric=metric, preProc=c("center","scale"), trControl=trainControl)
+                                                                              
+# Compare algorithms
+results <- resamples(list(LM=fit.lm, GLM=fit.glm, GLMNET=fit.glmnet))
+summary(results)
+dotplot(results)
+```
+
+
+
