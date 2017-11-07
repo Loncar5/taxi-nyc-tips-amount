@@ -50,8 +50,6 @@ train <- train %>%
   select(-work, -RateCodeID, -mta_tax)
 ```
 
-
-
 ## Creating Dummy Variables
 ```{r}
 dmy <- dummyVars(" ~ .", data = train, fullRank=T)
@@ -64,7 +62,7 @@ nzv <- nearZeroVar(train)
 train <- train[, -nzv]
 ```
 
-
+# Correlation Matrix
 ```{r}
 train <- train %>% 
   select(-tip_amount,tip_amount)
@@ -74,6 +72,45 @@ train %>%
   corrplot(type="lower", method="color", diag=FALSE)
 ```
 
+```{r}
+train <- train_ %>%
+  select(trip_distance, trip_duration, total_amount, dropoff_boroughManhattan, fare_amount, payment_type2, tip_amount)
+```
+
+# Data Split
+```{r}
+# Split out validation dataset
+# create a list of 80% of the rows in the original dataset we can use for training
+set.seed(77)
+validationIndex <- createDataPartition(BostonHousing$medv, p=0.80, list=FALSE)
+# select 20% of the data for validation
+validation <- BostonHousing[-validationIndex,]
+# use the remaining 80% of data to training and testing the models
+dataset <- BostonHousing[validationIndex,]
+```
+
+
+
+```{r}
+gbmImp <- varImp(train)
+```
+
+```{r}
+#Feature selection using rfe in caret
+control <- rfeControl(functions = rfFuncs,
+                   method = "repeatedcv",
+                   repeats = 3,
+                   verbose = FALSE)
+
+outcomeName<-'tip_amount'
+predictors <- names(train)[!names(train) %in% outcomeName]
+tip_amount_Profile <- rfe(train[,], train[,outcomeName], rfeControl = control)
+                      
+```
+```{r}
+sum(is.na(train))
+```
+
 
 # 4. Evaluate Algorithms
 ```{r}
@@ -81,21 +118,18 @@ trainControl <- trainControl(method="repeatedcv", number=2, repeats=1)
 metric <- "RMSE"
 ```
 
-```{r}
-sum(is.na(train))
-```
 
 ```{r}
 # LM
-set.seed(7)
+set.seed(77)
 fit.lm <- train(tip_amount ~., data = train, method = "lm", metric = metric, preProc=c("center", "scale"), trControl = trainControl)
 
 # GLM
-set.seed(7)
+set.seed(77)
 fit.glm <- train(tip_amount~., data = train, method = "glm", metric = metric, preProc = c("center","scale"), trControl = trainControl)
 
 # GLMNET
-set.seed(7)
+set.seed(77)
 fit.glmnet <- train(tip_amount~., data=train, method="glmnet", metric=metric,preProc=c("center", "scale"), trControl=trainControl)
                      
 # SVM
@@ -104,20 +138,120 @@ fit.glmnet <- train(tip_amount~., data=train, method="glmnet", metric=metric,pre
                   
 
 # # CART
-# set.seed(7)
-# grid <- expand.grid(.cp=c(0, 0.05, 0.1))
-# fit.cart <- train(tip_amount~., data=train, method="rpart", metric=metric, tuneGrid=grid,
-#                   preProc=c("center", "scale"), trControl=trainControl)
+set.seed(77)
+grid <- expand.grid(.cp=c(0, 0.05, 0.1))
+fit.cart <- train(tip_amount~., data=train, method="rpart", metric=metric, tuneGrid=grid,
+                   preProc=c("center", "scale"), trControl=trainControl)
 
 # KNN
-# set.seed(7)
-# fit.knn <- train(tip_amount ~., data = train, method="knn", metric=metric, preProc=c("center","scale"), trControl=trainControl)
+set.seed(77)
+fit.knn <- train(tip_amount ~., data = train, method="knn", metric=metric, preProc=c("center","scale"), trControl=trainControl)
                                                                               
 # Compare algorithms
-results <- resamples(list(LM=fit.lm, GLM=fit.glm, GLMNET=fit.glmnet))
+results <- resamples(list(LM=fit.lm, GLM=fit.glm, GLMNET=fit.glmnet, CART=fit.cart, KNN=fit.knn))
 summary(results)
 dotplot(results)
 ```
 
+Call:
+summary.resamples(object = results)
+
+Models: LM, GLM, GLMNET, CART, KNN 
+Number of resamples: 2 
+
+MAE 
+            Min.   1st Qu.    Median      Mean   3rd Qu.      Max. NA's
+LM     0.3749017 0.3757916 0.3766815 0.3766815 0.3775714 0.3784613    0
+GLM    0.3749017 0.3757916 0.3766815 0.3766815 0.3775714 0.3784613    0
+GLMNET 0.3748401 0.3755737 0.3763072 0.3763072 0.3770408 0.3777743    0
+CART   0.1225379 0.1232716 0.1240054 0.1240054 0.1247391 0.1254728    0
+KNN    0.2055447 0.2070730 0.2086012 0.2086012 0.2101295 0.2116578    0
+
+RMSE 
+            Min.   1st Qu.    Median      Mean   3rd Qu.      Max. NA's
+LM     0.6335931 0.6350578 0.6365225 0.6365225 0.6379872 0.6394519    0
+GLM    0.6335931 0.6350578 0.6365225 0.6365225 0.6379872 0.6394519    0
+GLMNET 0.6339294 0.6357709 0.6376124 0.6376124 0.6394539 0.6412954    0
+CART   0.5216807 0.5281193 0.5345580 0.5345580 0.5409967 0.5474353    0
+KNN    0.5760293 0.5830455 0.5900617 0.5900617 0.5970779 0.6040941    0
+
+Rsquared 
+            Min.   1st Qu.    Median      Mean   3rd Qu.      Max. NA's
+LM     0.8886532 0.8894418 0.8902304 0.8902304 0.8910190 0.8918076    0
+GLM    0.8886532 0.8894418 0.8902304 0.8902304 0.8910190 0.8918076    0
+GLMNET 0.8880965 0.8890160 0.8899356 0.8899356 0.8908552 0.8917747    0
+CART   0.9184385 0.9206819 0.9229253 0.9229253 0.9251687 0.9274120    0
+KNN    0.9008849 0.9033623 0.9058398 0.9058398 0.9083172 0.9107947    0
+
+# 2
+```{r}
+trainControl <- trainControl(method="repeatedcv", number=2, repeats=1)
+metric <- "RMSE"
+```
+
+
+```{r}
+# LM
+set.seed(77)
+fit.lm <- train(tip_amount ~., data = train, method = "lm", metric = metric, preProc=c("center", "scale","BoxCox"), trControl = trainControl)
+
+# GLM
+set.seed(77)
+fit.glm <- train(tip_amount~., data = train, method = "glm", metric = metric, preProc = c("center","scale", "BoxCox"), trControl = trainControl)
+
+# GLMNET
+set.seed(77)
+fit.glmnet <- train(tip_amount~., data=train, method="glmnet", metric=metric,preProc=c("center", "scale", "BoxCox"), trControl=trainControl)
+                     
+# SVM
+# set.seed(77)
+# fit.svm <- train(tip_amount~., data=train, method="svmRadial", metric=metric,preProc=c("center", "scale"), trControl=trainControl)
+                  
+
+# # CART
+set.seed(77)
+grid <- expand.grid(.cp=c(0, 0.05, 0.1))
+fit.cart <- train(tip_amount~., data=train, method="rpart", metric=metric, tuneGrid=grid,
+                   preProc=c("center", "scale", "BoxCox"), trControl=trainControl)
+
+# KNN
+set.seed(77)
+fit.knn <- train(tip_amount ~., data = train, method="knn", metric=metric, preProc=c("center","scale", "BoxCox"), trControl=trainControl)
+                                                                              
+# Compare algorithms
+results <- resamples(list(LM=fit.lm, GLM=fit.glm, GLMNET=fit.glmnet, CART=fit.cart, KNN=fit.knn))
+summary(results)
+dotplot(results)
+```
+
+Call:
+summary.resamples(object = results)
+
+Models: LM, GLM, GLMNET, CART, KNN 
+Number of resamples: 2 
+
+MAE 
+            Min.   1st Qu.    Median      Mean   3rd Qu.      Max. NA's
+LM     0.6945961 0.7018455 0.7090950 0.7090950 0.7163444 0.7235938    0
+GLM    0.6945961 0.7018455 0.7090950 0.7090950 0.7163444 0.7235938    0
+GLMNET 0.6952002 0.7020586 0.7089171 0.7089171 0.7157755 0.7226340    0
+CART   0.1225159 0.1232827 0.1240495 0.1240495 0.1248163 0.1255831    0
+KNN    0.2150206 0.2167125 0.2184045 0.2184045 0.2200964 0.2217883    0
+
+RMSE 
+            Min.   1st Qu.    Median      Mean   3rd Qu.      Max. NA's
+LM     1.1656131 1.1663183 1.1670234 1.1670234 1.1677285 1.1684337    0
+GLM    1.1656131 1.1663183 1.1670234 1.1670234 1.1677285 1.1684337    0
+GLMNET 1.1654390 1.1655112 1.1655835 1.1655835 1.1656557 1.1657280    0
+CART   0.5219293 0.5283028 0.5346763 0.5346763 0.5410497 0.5474232    0
+KNN    0.6532290 0.6639296 0.6746301 0.6746301 0.6853307 0.6960313    0
+
+Rsquared 
+            Min.   1st Qu.    Median      Mean   3rd Qu.      Max. NA's
+LM     0.6283535 0.6297216 0.6310897 0.6310897 0.6324578 0.6338259    0
+GLM    0.6283535 0.6297216 0.6310897 0.6310897 0.6324578 0.6338259    0
+GLMNET 0.6301485 0.6310597 0.6319709 0.6319709 0.6328822 0.6337934    0
+CART   0.9184420 0.9206684 0.9228948 0.9228948 0.9251211 0.9273475    0
+KNN    0.8681237 0.8723528 0.8765819 0.8765819 0.8808110 0.8850401    0
 
 
